@@ -1,0 +1,37 @@
+[package]
+name = "invoq"
+version = "0.1.0"
+edition = "2021"
+description = "Official Rust SDK for invoq server APIs and webhook verification."
+license = "MIT"
+repository = "https://github.com/invoqmoney/sdk-rust"
+readme = "README.md"
+keywords = ["invoq", "stablecoin", "payments", "sdk"]
+categories = ["api-bindings", "web-programming"]
+rust-version = "1.86"
+exclude = [
+    ".agents/**",
+    ".codex/**",
+    "Cargo.lock",
+]
+
+[lib]
+name = "invoq"
+path = "src/lib.rs"
+
+[features]
+default = ["rustls-tls"]
+native-tls = ["reqwest/native-tls"]
+rustls-tls = ["reqwest/rustls-tls"]
+
+[dependencies]
+hmac = "0.12"
+http = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+thiserror = "2"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
