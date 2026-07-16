@@ -28,7 +28,7 @@ El lado del navegador es el mismo para cualquier backend: **`@invoq/checkout`** 
 
 ```toml
 [dependencies]
-invoq = "0.1.0"
+invoq = "0.2.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
