@@ -174,8 +174,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 `invoices.get()` devuelve la forma de factura pública usada por el checkout. Incluye
-campos orientados al checkout como `amount_paid`, `amount_due`, `payment_status`,
-`project`, `deposit_address`, `monitoring_ends_at` y `direct_onchain_rails`, pero no
+campos orientados al checkout como `amount_paid`, `amount_due`, `amount_overpaid`,
+`payment_status`, `project`, `deposit_address`, `monitoring_ends_at`,
+`monitoring_status`, `transfers` y `direct_onchain_rails`, pero no
 incluye `reference_id`. Usa la respuesta de creación o el webhook `invoice.paid`
 cuando necesites tu referencia de comercio.
 
@@ -214,7 +215,12 @@ El SDK devuelve directamente el objeto `data` de la respuesta.
 Los montos en las respuestas se normalizan. Crea con `"129"` y la factura devuelve
 `amount: "129.0000"`. Compara los montos numéricamente, no como cadenas. `amount_due`
 se deriva como `max(amount - amount_paid, 0)` y usa la misma escala de 18 decimales
-que `amount_paid`.
+que `amount_paid`; `amount_overpaid` es su reflejo, `max(amount_paid - amount, 0)`,
+así que nunca restas dinero por tu cuenta. `monitoring_status` es `active` o
+`ended` — una vez que es `ended`, la dirección de depósito deja de vigilarse — y
+`transfers` es el registro confirmado de recepciones on-chain (cada entrada tiene
+`tx_hash`, `amount` y `explorer_tx_url`). Ambos son `null` / `[]` en las facturas
+de prueba.
 
 ## Página de pago alojada
 

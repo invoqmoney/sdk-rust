@@ -50,6 +50,17 @@ pub enum InvoicePaidStatus {
     Settled,
 }
 
+/// Server-computed state of the invoice's deposit-address monitoring window.
+///
+/// `ended` means the deposit address is no longer watched. `None` for test
+/// invoices.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MonitoringStatus {
+    Active,
+    Ended,
+}
+
 /// Field-level validation error returned by the invoq API.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ApiErrorField {
@@ -91,6 +102,18 @@ pub struct PublicInvoiceProject {
     pub logo_url: Option<String>,
 }
 
+/// One confirmed inbound transfer credited to the invoice — the payer-facing
+/// receipt trail.
+///
+/// `amount` is in invoice-currency units at the same scale as `amount_paid`;
+/// `explorer_tx_url` is `None` when the chain has no usable explorer.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct PublicInvoiceTransfer {
+    pub tx_hash: String,
+    pub amount: String,
+    pub explorer_tx_url: Option<String>,
+}
+
 /// Invoice returned by invoice creation.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Invoice {
@@ -104,7 +127,9 @@ pub struct Invoice {
     pub deposit_address: Option<String>,
     pub status: InvoiceStatus,
     pub amount_due: String,
+    pub amount_overpaid: String,
     pub monitoring_ends_at: Option<String>,
+    pub monitoring_status: Option<MonitoringStatus>,
     pub direct_onchain_rails: Vec<DirectOnchainRail>,
 }
 
@@ -120,11 +145,14 @@ pub struct PublicInvoice {
     pub deposit_address: Option<String>,
     pub status: InvoiceStatus,
     pub amount_due: String,
+    pub amount_overpaid: String,
     pub monitoring_ends_at: Option<String>,
+    pub monitoring_status: Option<MonitoringStatus>,
     pub direct_onchain_rails: Vec<DirectOnchainRail>,
     pub amount_paid: String,
     pub payment_status: InvoicePaymentStatus,
     pub project: PublicInvoiceProject,
+    pub transfers: Vec<PublicInvoiceTransfer>,
 }
 
 /// Invoice returned after simulating payment on a test invoice.
@@ -140,7 +168,9 @@ pub struct TestPaymentInvoice {
     pub deposit_address: Option<String>,
     pub status: InvoiceStatus,
     pub amount_due: String,
+    pub amount_overpaid: String,
     pub monitoring_ends_at: Option<String>,
+    pub monitoring_status: Option<MonitoringStatus>,
     pub direct_onchain_rails: Vec<DirectOnchainRail>,
     pub amount_paid: String,
     pub fully_paid_at: Option<String>,
@@ -270,7 +300,7 @@ pub type InvoqWebhookEvent = serde_json::Value;
 mod tests {
     use super::{
         CreateInvoiceInput, CreateTestPaymentInput, Invoice, InvoiceCurrency, InvoicePaidStatus,
-        InvoicePaymentStatus, InvoiceStatus,
+        InvoicePaymentStatus, InvoiceStatus, MonitoringStatus, PublicInvoice,
     };
 
     #[test]
@@ -368,6 +398,14 @@ mod tests {
             serde_json::from_value::<InvoicePaidStatus>(serde_json::json!("settled")).unwrap(),
             InvoicePaidStatus::Settled
         );
+        assert_eq!(
+            serde_json::to_value(MonitoringStatus::Active).unwrap(),
+            serde_json::json!("active")
+        );
+        assert_eq!(
+            serde_json::from_value::<MonitoringStatus>(serde_json::json!("ended")).unwrap(),
+            MonitoringStatus::Ended
+        );
     }
 
     #[test]
@@ -383,7 +421,9 @@ mod tests {
             "deposit_address": null,
             "status": "unpaid",
             "amount_due": "149.000000000000000000",
+            "amount_overpaid": "0.000000000000000000",
             "monitoring_ends_at": null,
+            "monitoring_status": null,
             "direct_onchain_rails": []
         }))
         .unwrap();
@@ -391,5 +431,51 @@ mod tests {
         assert_eq!(invoice.reference_id, None);
         assert_eq!(invoice.description, None);
         assert_eq!(invoice.return_url, None);
+        assert_eq!(invoice.amount_overpaid, "0.000000000000000000");
+        assert_eq!(invoice.monitoring_status, None);
+    }
+
+    #[test]
+    fn public_invoice_deserializes_new_response_fields() {
+        let invoice: PublicInvoice = serde_json::from_value(serde_json::json!({
+            "id": "inv_test_123",
+            "mode": "live",
+            "amount": "149",
+            "currency": "USD",
+            "description": null,
+            "return_url": null,
+            "deposit_address": "0xdeposit",
+            "status": "partially_paid",
+            "amount_due": "49.000000000000000000",
+            "amount_overpaid": "0.000000000000000000",
+            "monitoring_ends_at": null,
+            "monitoring_status": "active",
+            "direct_onchain_rails": [],
+            "amount_paid": "100.000000000000000000",
+            "payment_status": "confirming",
+            "project": {
+                "id": "proj_test_123",
+                "name": "Test project",
+                "logo_url": null
+            },
+            "transfers": [
+                {
+                    "tx_hash": "0xhash",
+                    "amount": "100.000000000000000000",
+                    "explorer_tx_url": "https://explorer.test/tx/0xhash"
+                }
+            ]
+        }))
+        .unwrap();
+
+        assert_eq!(invoice.amount_overpaid, "0.000000000000000000");
+        assert_eq!(invoice.monitoring_status, Some(MonitoringStatus::Active));
+        assert_eq!(invoice.transfers.len(), 1);
+        assert_eq!(invoice.transfers[0].tx_hash, "0xhash");
+        assert_eq!(invoice.transfers[0].amount, "100.000000000000000000");
+        assert_eq!(
+            invoice.transfers[0].explorer_tx_url.as_deref(),
+            Some("https://explorer.test/tx/0xhash")
+        );
     }
 }

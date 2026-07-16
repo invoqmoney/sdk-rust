@@ -15,7 +15,8 @@ pub use types::{
     ApiErrorField, ApiErrorLocation, CreateInvoiceInput, CreateTestPaymentInput, DirectOnchainRail,
     Invoice, InvoiceCurrency, InvoiceMode, InvoicePaidEvent, InvoicePaidEventData,
     InvoicePaidEventInvoice, InvoicePaidStatus, InvoicePaymentStatus, InvoiceStatus,
-    InvoqWebhookEvent, PublicInvoice, PublicInvoiceProject, TestPaymentInvoice,
+    InvoqWebhookEvent, MonitoringStatus, PublicInvoice, PublicInvoiceProject,
+    PublicInvoiceTransfer, TestPaymentInvoice,
 };
 pub use webhooks::{invoice_paid_event, is_invoice_paid, verify_webhook, WebhookHeaders};
 
