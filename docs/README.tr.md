@@ -172,8 +172,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 `invoices.get()`, checkout'un kullandığı herkese açık fatura şeklini döndürür.
-`amount_paid`, `amount_due`, `payment_status`, `project`, `deposit_address`,
-`monitoring_ends_at` ve `direct_onchain_rails` gibi checkout'a yönelik alanları içerir,
+`amount_paid`, `amount_due`, `amount_overpaid`, `payment_status`, `project`,
+`deposit_address`, `monitoring_ends_at`, `monitoring_status`, `transfers` ve
+`direct_onchain_rails` gibi checkout'a yönelik alanları içerir,
 ancak `reference_id` içermez. Merchant referansınız gerektiğinde oluşturma yanıtını
 veya `invoice.paid` webhook'unu kullanın.
 
@@ -211,7 +212,12 @@ SDK, yanıtın `data` nesnesini doğrudan döndürür.
 Yanıtlardaki tutarlar normalize edilir. `"129"` ile oluşturun, fatura
 `amount: "129.0000"` döndürür. Tutarları dize olarak değil, sayısal karşılaştırın.
 `amount_due`, `max(amount - amount_paid, 0)` olarak türetilir ve `amount_paid` ile aynı
-18 ondalık basamak ölçeğini kullanır.
+18 ondalık basamak ölçeğini kullanır; `amount_overpaid` ise onun aynasıdır,
+`max(amount_paid - amount, 0)`, yani parayı kendiniz çıkarmanız hiç gerekmez.
+`monitoring_status`, `active` ya da `ended` olur — `ended` olduğunda yatırma
+adresi artık izlenmez — ve `transfers`, onaylanmış zincir üstü tahsilat kaydıdır
+(her girdide `tx_hash`, `amount` ve `explorer_tx_url` bulunur). İkisi de test
+faturaları için `null` / `[]` olur.
 
 ## Barındırılan ödeme sayfası
 

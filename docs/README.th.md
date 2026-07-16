@@ -152,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()` จะคืนรูปแบบใบแจ้งหนี้สาธารณะที่ checkout ใช้ โดยมีฟิลด์ฝั่ง checkout เช่น `amount_paid`, `amount_due`, `payment_status`, `project`, `deposit_address`, `monitoring_ends_at` และ `direct_onchain_rails` แต่ไม่มี `reference_id` เมื่อคุณต้องใช้ reference ฝั่ง merchant ให้ใช้ response ตอนสร้างใบแจ้งหนี้หรือ webhook `invoice.paid`
+`invoices.get()` จะคืนรูปแบบใบแจ้งหนี้สาธารณะที่ checkout ใช้ โดยมีฟิลด์ฝั่ง checkout เช่น `amount_paid`, `amount_due`, `amount_overpaid`, `payment_status`, `project`, `deposit_address`, `monitoring_ends_at`, `monitoring_status`, `transfers` และ `direct_onchain_rails` แต่ไม่มี `reference_id` เมื่อคุณต้องใช้ reference ฝั่ง merchant ให้ใช้ response ตอนสร้างใบแจ้งหนี้หรือ webhook `invoice.paid`
 
 สร้างการชำระเงินทดสอบ:
 
@@ -181,7 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 SDK จะคืนออบเจกต์ `data` ของ response กลับมาโดยตรง
 
-ยอดเงินในการตอบกลับจะถูกปรับให้อยู่ในรูปแบบมาตรฐาน (normalized) สร้างด้วย `"129"` แล้วใบแจ้งหนี้จะตอบกลับ `amount: "129.0000"` เวลาเทียบยอดเงินให้เทียบเป็นตัวเลข อย่าเทียบเป็นสตริง `amount_due` คำนวณจาก `max(amount - amount_paid, 0)` และใช้สเกลทศนิยม 18 ตำแหน่งเหมือน `amount_paid`
+ยอดเงินในการตอบกลับจะถูกปรับให้อยู่ในรูปแบบมาตรฐาน (normalized) สร้างด้วย `"129"` แล้วใบแจ้งหนี้จะตอบกลับ `amount: "129.0000"` เวลาเทียบยอดเงินให้เทียบเป็นตัวเลข อย่าเทียบเป็นสตริง `amount_due` คำนวณจาก `max(amount - amount_paid, 0)` และใช้สเกลทศนิยม 18 ตำแหน่งเหมือน `amount_paid` ขณะที่ `amount_overpaid` เป็นภาพสะท้อนของมัน คือ `max(amount_paid - amount, 0)` คุณจึงไม่ต้องลบเงินเอง `monitoring_status` มีค่าเป็น `active` หรือ `ended` — พอเป็น `ended` แล้ว ที่อยู่รับเงินจะไม่ถูกเฝ้าดูอีกต่อไป — ส่วน `transfers` คือรายการรับเงินบนเชนที่ยืนยันแล้ว (แต่ละรายการมี `tx_hash`, `amount` และ `explorer_tx_url`) ทั้งคู่จะเป็น `null` / `[]` สำหรับใบแจ้งหนี้ทดสอบ
 
 ## หน้าชำระเงินที่โฮสต์ให้
 

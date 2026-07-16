@@ -170,8 +170,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 `invoices.get()` returns the public invoice shape used by checkout. It includes
-checkout-facing fields such as `amount_paid`, `amount_due`, `payment_status`,
-`project`, `deposit_address`, `monitoring_ends_at`, and `direct_onchain_rails`,
+checkout-facing fields such as `amount_paid`, `amount_due`, `amount_overpaid`,
+`payment_status`, `project`, `deposit_address`, `monitoring_ends_at`,
+`monitoring_status`, `transfers`, and `direct_onchain_rails`,
 but it does not include `reference_id`. Use the create response or the
 `invoice.paid` webhook when you need your merchant reference.
 
@@ -209,7 +210,11 @@ The SDK returns the response `data` object directly.
 Amounts in responses are normalized. Create with `"129"` and the invoice returns
 `amount: "129.0000"`. Compare amounts numerically, not as strings. `amount_due`
 is derived as `max(amount - amount_paid, 0)` and uses the same 18-decimal scale
-as `amount_paid`.
+as `amount_paid`; `amount_overpaid` is its mirror, `max(amount_paid - amount, 0)`,
+so you never subtract money yourself. `monitoring_status` is `active` or `ended`
+— once it is `ended`, the deposit address is no longer watched — and `transfers`
+is the confirmed on-chain receipt trail (each entry has `tx_hash`, `amount`, and
+`explorer_tx_url`). Both are `null` / `[]` for test invoices.
 
 ## Hosted checkout page
 

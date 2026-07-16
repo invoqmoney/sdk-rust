@@ -152,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()` 回傳結帳頁所使用的公開帳單結構。它包含面向結帳頁的欄位，例如 `amount_paid`、`amount_due`、`payment_status`、`project`、`deposit_address`、`monitoring_ends_at` 和 `direct_onchain_rails`，但不包含 `reference_id`。需要商家端的參照時，請使用建立帳單的回應或 `invoice.paid` webhook。
+`invoices.get()` 回傳結帳頁所使用的公開帳單結構。它包含面向結帳頁的欄位，例如 `amount_paid`、`amount_due`、`amount_overpaid`、`payment_status`、`project`、`deposit_address`、`monitoring_ends_at`、`monitoring_status`、`transfers` 和 `direct_onchain_rails`，但不包含 `reference_id`。需要商家端的參照時，請使用建立帳單的回應或 `invoice.paid` webhook。
 
 建立測試付款：
 
@@ -181,7 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 SDK 會直接回傳回應中的 `data` 物件。
 
-回應中的金額會經過正規化。用 `"129"` 建立，帳單會回傳 `amount: "129.0000"`。比較金額請按數值比較，不要按字串比較。`amount_due` 依 `max(amount - amount_paid, 0)` 衍生，使用和 `amount_paid` 相同的 18 位小數 scale。
+回應中的金額會經過正規化。用 `"129"` 建立，帳單會回傳 `amount: "129.0000"`。比較金額請按數值比較，不要按字串比較。`amount_due` 依 `max(amount - amount_paid, 0)` 衍生，使用和 `amount_paid` 相同的 18 位小數 scale；`amount_overpaid` 與它互為鏡像，即 `max(amount_paid - amount, 0)`，所以你不必自己做減法。`monitoring_status` 取值 `active` 或 `ended`——一旦變為 `ended`，收款位址就不再被監控——而 `transfers` 是已確認的鏈上收款紀錄（每一項都含 `tx_hash`、`amount` 和 `explorer_tx_url`）。測試帳單裡兩者分別為 `null` / `[]`。
 
 ## 託管結帳頁
 

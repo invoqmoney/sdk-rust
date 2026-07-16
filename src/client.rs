@@ -321,6 +321,8 @@ mod tests {
         let request = server.join();
 
         assert_eq!(result.id, "inv_test_123");
+        assert_eq!(result.amount_overpaid, "0.000000000000000000");
+        assert_eq!(result.monitoring_status, None);
         assert_eq!(request.method, "POST");
         assert_eq!(request.path, "/v1/invoices");
         assert_eq!(
@@ -367,6 +369,9 @@ mod tests {
             crate::types::InvoicePaymentStatus::Unpaid
         );
         assert_eq!(result.project.name.as_deref(), Some("Test project"));
+        assert_eq!(result.amount_overpaid, "0.000000000000000000");
+        assert_eq!(result.monitoring_status, None);
+        assert!(result.transfers.is_empty());
         assert_eq!(request.method, "GET");
         assert_eq!(request.path, "/v1/invoices/inv%2Ftest%20123");
         assert!(!request.headers.contains_key("content-type"));
@@ -398,6 +403,8 @@ mod tests {
 
         assert_eq!(result.status, InvoiceStatus::Paid);
         assert_eq!(result.amount_paid, "149");
+        assert_eq!(result.amount_overpaid, "0.000000000000000000");
+        assert_eq!(result.monitoring_status, None);
         assert_eq!(request.path, "/v1/invoices/inv_test_123/test-payments");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&request.body).unwrap(),
@@ -512,7 +519,9 @@ mod tests {
                 "deposit_address":null,
                 "status":"{status}",
                 "amount_due":"149.000000000000000000",
+                "amount_overpaid":"0.000000000000000000",
                 "monitoring_ends_at":null,
+                "monitoring_status":null,
                 "direct_onchain_rails":[]
             }}"#
         )
@@ -530,7 +539,9 @@ mod tests {
                 "deposit_address":null,
                 "status":"{status}",
                 "amount_due":"149.000000000000000000",
+                "amount_overpaid":"0.000000000000000000",
                 "monitoring_ends_at":null,
+                "monitoring_status":null,
                 "direct_onchain_rails":[],
                 "amount_paid":"0",
                 "payment_status":"unpaid",
@@ -538,7 +549,8 @@ mod tests {
                     "id":"proj_test_123",
                     "name":"Test project",
                     "logo_url":null
-                }}
+                }},
+                "transfers":[]
             }}"#
         )
     }
@@ -556,7 +568,9 @@ mod tests {
                 "deposit_address":null,
                 "status":"{status}",
                 "amount_due":"0.000000000000000000",
+                "amount_overpaid":"0.000000000000000000",
                 "monitoring_ends_at":null,
+                "monitoring_status":null,
                 "direct_onchain_rails":[],
                 "amount_paid":"149",
                 "fully_paid_at":"2026-06-15T00:00:00.000Z"

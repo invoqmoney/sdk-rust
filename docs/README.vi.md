@@ -172,8 +172,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 `invoices.get()` trả về dạng hóa đơn công khai mà checkout sử dụng. Nó bao gồm
-các trường dành cho checkout như `amount_paid`, `amount_due`, `payment_status`,
-`project`, `deposit_address`, `monitoring_ends_at` và `direct_onchain_rails`,
+các trường dành cho checkout như `amount_paid`, `amount_due`, `amount_overpaid`,
+`payment_status`, `project`, `deposit_address`, `monitoring_ends_at`,
+`monitoring_status`, `transfers` và `direct_onchain_rails`,
 nhưng không bao gồm `reference_id`. Hãy dùng phản hồi khi tạo hóa đơn hoặc webhook
 `invoice.paid` khi bạn cần mã tham chiếu phía merchant của mình.
 
@@ -211,7 +212,12 @@ SDK trả về trực tiếp đối tượng `data` của phản hồi.
 Số tiền trong phản hồi được chuẩn hóa. Tạo với `"129"` thì hóa đơn trả về
 `amount: "129.0000"`. Hãy so sánh số tiền theo giá trị số, đừng so sánh dạng
 chuỗi. `amount_due` được tính là `max(amount - amount_paid, 0)` và dùng cùng
-thang 18 chữ số thập phân như `amount_paid`.
+thang 18 chữ số thập phân như `amount_paid`; `amount_overpaid` là bản đối xứng của
+nó, `max(amount_paid - amount, 0)`, nên bạn không bao giờ phải tự trừ tiền.
+`monitoring_status` là `active` hoặc `ended` — khi đã là `ended`, địa chỉ nạp tiền
+không còn được theo dõi nữa — còn `transfers` là danh sách biên nhận trên chuỗi đã
+xác nhận (mỗi mục có `tx_hash`, `amount` và `explorer_tx_url`). Cả hai đều là
+`null` / `[]` với hóa đơn thử nghiệm.
 
 ## Trang thanh toán được lưu trữ sẵn
 

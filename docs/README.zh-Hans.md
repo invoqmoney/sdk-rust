@@ -152,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()` 返回收银台使用的公开账单结构。它包含面向收银台的字段，例如 `amount_paid`、`amount_due`、`payment_status`、`project`、`deposit_address`、`monitoring_ends_at` 和 `direct_onchain_rails`，但不包含 `reference_id`。如果需要商户侧的参考号，请使用创建账单的响应或 `invoice.paid` webhook。
+`invoices.get()` 返回收银台使用的公开账单结构。它包含面向收银台的字段，例如 `amount_paid`、`amount_due`、`amount_overpaid`、`payment_status`、`project`、`deposit_address`、`monitoring_ends_at`、`monitoring_status`、`transfers` 和 `direct_onchain_rails`，但不包含 `reference_id`。如果需要商户侧的参考号，请使用创建账单的响应或 `invoice.paid` webhook。
 
 创建模拟付款：
 
@@ -181,7 +181,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 SDK 直接返回响应里的 `data` 对象。
 
-响应里的金额都经过规范化：用 `"129"` 创建，账单返回 `amount: "129.0000"`。比较金额请按数值比，不要按字符串比。`amount_due` 按 `max(amount - amount_paid, 0)` 派生，使用和 `amount_paid` 相同的 18 位小数 scale。
+响应里的金额都经过规范化：用 `"129"` 创建，账单返回 `amount: "129.0000"`。比较金额请按数值比，不要按字符串比。`amount_due` 按 `max(amount - amount_paid, 0)` 派生，使用和 `amount_paid` 相同的 18 位小数 scale；`amount_overpaid` 与它互为镜像，即 `max(amount_paid - amount, 0)`，所以你不必自己做减法。`monitoring_status` 取值 `active` 或 `ended`——一旦变为 `ended`，收款地址就不再被监控——而 `transfers` 是已确认的链上收款记录（每一项都含 `tx_hash`、`amount` 和 `explorer_tx_url`）。测试账单里两者分别为 `null` / `[]`。
 
 ## 托管收银页
 
