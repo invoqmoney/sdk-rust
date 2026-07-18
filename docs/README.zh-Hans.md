@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 不需要时，可以省略 `.description(...)`、`.reference_id(...)` 或 `.return_url(...)`。未设置的可选请求字段不会出现在 JSON 里。用 `.without_return_url()` 可以发送 `return_url: null`，主动放弃项目默认的 return URL。
 
-金额要由服务端决定，不要相信客户端传来的金额。`amount` 是 `"0.01"` 到 `"999.99"` 之间的十进制美元字符串，最多两位小数，比如 `"129"` 或 `"129.99"`。
+金额要由服务端决定，不要相信客户端传来的金额。`amount` 是 `"0.01"` 到 `"1000000.00"` 之间的十进制美元字符串，最多两位小数，比如 `"129"` 或 `"129.99"`。
 
 用 `reference_id` 把 `invoice.paid` webhook 对应回你的订单。它还让创建操作可以放心重试：用相同的 `reference_id` 和相同的账单条款再次创建，返回的是已有账单而不是重复开单；条款不同则会报 `409 reference_id_conflict` API 错误。
 
@@ -246,7 +246,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);

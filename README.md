@@ -146,7 +146,7 @@ are not set. Unset optional request fields are omitted from JSON. Use
 default return URL.
 
 Use a server-side amount. Do not trust client-supplied amounts. `amount` is a
-decimal USD string from `"0.01"` to `"999.99"` with up to 2 decimal places, such
+decimal USD string from `"0.01"` to `"1000000.00"` with up to 2 decimal places, such
 as `"129"` or `"129.99"`.
 
 Use `reference_id` to map `invoice.paid` webhooks back to your order. It also
@@ -292,7 +292,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);

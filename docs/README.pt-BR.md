@@ -148,7 +148,7 @@ forem definidos. Campos opcionais de requisição não definidos são omitidos d
 padrão do projeto.
 
 Use um valor definido no servidor. Não confie em valores vindos do cliente. `amount` é uma
-string decimal em USD de `"0.01"` a `"999.99"`, com até 2 casas decimais, como
+string decimal em USD de `"0.01"` a `"1000000.00"`, com até 2 casas decimais, como
 `"129"` ou `"129.99"`.
 
 Use o `reference_id` para ligar os webhooks `invoice.paid` ao seu pedido. Ele também
@@ -295,7 +295,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);

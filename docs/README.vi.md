@@ -148,7 +148,7 @@ không được đặt. Các trường tùy chọn không được đặt sẽ b
 mặc định của dự án.
 
 Hãy dùng số tiền do máy chủ quyết định. Đừng tin số tiền do phía client gửi lên.
-`amount` là chuỗi thập phân USD từ `"0.01"` đến `"999.99"`, tối đa 2 chữ số lẻ,
+`amount` là chuỗi thập phân USD từ `"0.01"` đến `"1000000.00"`, tối đa 2 chữ số lẻ,
 ví dụ `"129"` hoặc `"129.99"`.
 
 Dùng `reference_id` để nối các webhook `invoice.paid` về đúng đơn hàng của bạn. Nó
@@ -295,7 +295,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);

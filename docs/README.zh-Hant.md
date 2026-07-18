@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 沒有要設定 `.description(...)`、`.reference_id(...)` 或 `.return_url(...)` 時，直接省略即可。未設定的選填請求欄位不會出現在 JSON 裡。若要送出 `return_url: null`、不套用專案的預設 return URL，請用 `.without_return_url()`。
 
-金額要由伺服器端決定，不要相信用戶端傳來的金額。`amount` 是 `"0.01"` 到 `"999.99"` 之間的十進位美元字串，最多兩位小數，例如 `"129"` 或 `"129.99"`。
+金額要由伺服器端決定，不要相信用戶端傳來的金額。`amount` 是 `"0.01"` 到 `"1000000.00"` 之間的十進位美元字串，最多兩位小數，例如 `"129"` 或 `"129.99"`。
 
 用 `reference_id` 把 `invoice.paid` webhook 對應回你的訂單。它也讓建立動作可以放心重試：用相同的 `reference_id` 和相同的帳單條件再建立一次，回傳的是既有帳單而不是重複開單；條件不同則會回 `409 reference_id_conflict` API 錯誤。
 
@@ -246,7 +246,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);

@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ละ `.description(...)`, `.reference_id(...)` หรือ `.return_url(...)` ไว้ได้เมื่อไม่ได้กำหนดค่า ฟิลด์ optional ใน request ที่ไม่ได้กำหนดค่าจะไม่ถูกใส่ลงใน JSON ใช้ `.without_return_url()` เพื่อส่ง `return_url: null` และเลือกไม่ใช้ return URL เริ่มต้นของโปรเจกต์
 
-ใช้ยอดเงินที่กำหนดจากฝั่งเซิร์ฟเวอร์ อย่าเชื่อยอดเงินที่ส่งมาจากฝั่งไคลเอนต์ `amount` เป็นสตริงเลขทศนิยมสกุล USD ตั้งแต่ `"0.01"` ถึง `"999.99"` ทศนิยมไม่เกิน 2 ตำแหน่ง เช่น `"129"` หรือ `"129.99"`
+ใช้ยอดเงินที่กำหนดจากฝั่งเซิร์ฟเวอร์ อย่าเชื่อยอดเงินที่ส่งมาจากฝั่งไคลเอนต์ `amount` เป็นสตริงเลขทศนิยมสกุล USD ตั้งแต่ `"0.01"` ถึง `"1000000.00"` ทศนิยมไม่เกิน 2 ตำแหน่ง เช่น `"129"` หรือ `"129.99"`
 
 ใช้ `reference_id` เพื่อโยง webhook `invoice.paid` กลับไปหาคำสั่งซื้อของคุณ และยังทำให้การสร้างใบแจ้งหนี้ลองใหม่ได้อย่างปลอดภัยด้วย: ถ้าสร้างซ้ำด้วย `reference_id` เดิมและเงื่อนไขใบแจ้งหนี้เดิม จะได้ใบแจ้งหนี้ใบเดิมกลับมาแทนที่จะเกิดใบซ้ำ ส่วนเงื่อนไขที่ต่างออกไปจะล้มเหลวด้วยข้อผิดพลาด API `409 reference_id_conflict`
 
@@ -246,7 +246,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);

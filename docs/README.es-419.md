@@ -149,7 +149,7 @@ definas. Los campos opcionales de la solicitud sin definir se omiten del JSON. U
 predeterminada del proyecto.
 
 Usa un monto definido en el servidor. No confíes en los montos que manda el
-cliente. `amount` es una cadena decimal en USD de `"0.01"` a `"999.99"` con hasta 2
+cliente. `amount` es una cadena decimal en USD de `"0.01"` a `"1000000.00"` con hasta 2
 decimales, como `"129"` o `"129.99"`.
 
 Usa `reference_id` para vincular los webhooks `invoice.paid` con tu pedido. También
@@ -300,7 +300,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);

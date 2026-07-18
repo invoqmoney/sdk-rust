@@ -148,7 +148,7 @@ diisi. Field request opsional yang tidak diisi akan dihilangkan dari JSON. Pakai
 proyek.
 
 Tentukan jumlahnya di sisi server. Jangan percaya jumlah yang dikirim klien. `amount` adalah
-string desimal USD dari `"0.01"` sampai `"999.99"` dengan maksimal 2 angka di belakang koma,
+string desimal USD dari `"0.01"` sampai `"1000000.00"` dengan maksimal 2 angka di belakang koma,
 misalnya `"129"` atau `"129.99"`.
 
 Pakai `reference_id` untuk memetakan webhook `invoice.paid` kembali ke pesanan Anda. Ini juga
@@ -295,7 +295,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);

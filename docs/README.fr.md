@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Omettez `.description(...)`, `.reference_id(...)` ou `.return_url(...)` lorsqu’ils ne sont pas définis. Les champs de requête optionnels non définis sont omis du JSON. Utilisez `.without_return_url()` pour envoyer `return_url: null` et renoncer à l’URL de retour par défaut du projet.
 
-Utilisez un montant défini côté serveur. Ne faites pas confiance aux montants fournis par le client. `amount` est une chaîne décimale en USD de `"0.01"` à `"999.99"`, avec au plus 2 décimales, comme `"129"` ou `"129.99"`.
+Utilisez un montant défini côté serveur. Ne faites pas confiance aux montants fournis par le client. `amount` est une chaîne décimale en USD de `"0.01"` à `"1000000.00"`, avec au plus 2 décimales, comme `"129"` ou `"129.99"`.
 
 Utilisez `reference_id` pour relier les webhooks `invoice.paid` à votre commande. Il permet aussi de relancer la création sans risque : recréer une facture avec le même `reference_id` et les mêmes conditions renvoie la facture existante au lieu d’un doublon, tandis qu’avec des conditions différentes, l’appel échoue avec une erreur d’API `409 reference_id_conflict`.
 
@@ -246,7 +246,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);

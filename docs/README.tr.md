@@ -148,7 +148,7 @@ Ayarlı değillerse `.description(...)`, `.reference_id(...)` veya `.return_url(
 bırakmak için `.without_return_url()` kullanın.
 
 Sunucu tarafında bir tutar kullanın. İstemciden gelen tutarlara güvenmeyin. `amount`,
-`"0.01"` ile `"999.99"` arasında, en fazla 2 ondalık basamaklı, USD cinsinden ondalık
+`"0.01"` ile `"1000000.00"` arasında, en fazla 2 ondalık basamaklı, USD cinsinden ondalık
 bir dizedir — örneğin `"129"` veya `"129.99"`.
 
 `invoice.paid` webhook'larını siparişinize geri bağlamak için `reference_id` kullanın.
@@ -295,7 +295,7 @@ invoq-signature: t=<unix seconds>,v1=<hex HMAC-SHA256 of "<t>.<raw body>">
 use invoq::{CreateInvoiceInput, Invoq, InvoqError};
 
 async fn handle_error(invoq: Invoq) -> Result<(), Box<dyn std::error::Error>> {
-    match invoq.invoices.create(CreateInvoiceInput::new("1000")).await {
+    match invoq.invoices.create(CreateInvoiceInput::new("10000000")).await {
         Ok(invoice) => println!("{invoice:?}"),
         Err(InvoqError::Api(error)) => {
             eprintln!("status: {}", error.status);
