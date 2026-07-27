@@ -28,7 +28,7 @@ Hangi arka ucu seçerseniz seçin, tarayıcı tarafı aynıdır: **`@invoq/check
 
 ```toml
 [dependencies]
-invoq = "0.2.0"
+invoq = "0.3.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -46,6 +46,9 @@ Rust 1.86 veya üstünü gerektirir.
 3. Projenizin **webhooks** ayarlarında webhook URL'nizi kaydedin. O modun webhook
    sırrı (`whsec_...`) yalnızca bir kez, webhook'u ilk etkinleştirdiğinizde
    gösterilir — hemen saklayın. Webhook URL'leri herkese açık HTTPS URL'leri olmalı.
+4. Canlıya geçmeden önce **Receiving wallet** ayarınızı yapın. Test faturaları buna
+   ihtiyaç duymaz; paranın gideceği yer olmayan canlı bir fatura
+   `409 no_payment_options_available` ile başarısız olur.
 
 Gizli anahtarı sunucu ortamınıza ekleyin:
 
@@ -120,7 +123,7 @@ kontrol eder.
 Fatura oluşturun:
 
 ```rust,no_run
-use invoq::{CreateInvoiceInput, Invoq, InvoiceCurrency};
+use invoq::{CreateInvoiceInput, Invoq};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -130,7 +133,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoices
         .create(
             CreateInvoiceInput::new("149")
-                .currency(InvoiceCurrency::Usd)
                 .description("SaaS boilerplate")
                 .reference_id("order_1234")
                 .return_url("https://example.com/orders/order_1234"),
@@ -149,7 +151,8 @@ bırakmak için `.without_return_url()` kullanın.
 
 Sunucu tarafında bir tutar kullanın. İstemciden gelen tutarlara güvenmeyin. `amount`,
 `"0.01"` ile `"1000000.00"` arasında, en fazla 2 ondalık basamaklı, USD cinsinden ondalık
-bir dizedir — örneğin `"129"` veya `"129.99"`.
+bir dizedir — örneğin `"129"` veya `"129.99"`. Para birimi her zaman USD'dir ve test mi live
+mı olduğu anahtardan gelir — ikisi de istek alanı değildir.
 
 `invoice.paid` webhook'larını siparişinize geri bağlamak için `reference_id` kullanın.
 Oluşturmayı yeniden denemeyi de güvenli kılar: aynı `reference_id` ve aynı fatura
@@ -171,12 +174,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()`, checkout'un kullandığı herkese açık fatura şeklini döndürür.
-`amount_paid`, `amount_due`, `amount_overpaid`, `payment_status`, `project`,
-`deposit_address`, `monitoring_ends_at`, `monitoring_status`, `transfers` ve
-`direct_onchain_rails` gibi checkout'a yönelik alanları içerir,
-ancak `reference_id` içermez. Merchant referansınız gerektiğinde oluşturma yanıtını
-veya `invoice.paid` webhook'unu kullanın.
+`invoices.get()`, checkout'un kullandığı herkese açık fatura şeklini döndürür: oluşturma
+yanıtının şekli, artı `amount_paid`, `project` ve `transfers`, eksi `reference_id`. Merchant
+referansınız gerektiğinde oluşturma yanıtını veya `invoice.paid` webhook'unu kullanın.
 
 Test ödemesi oluşturun:
 
@@ -209,15 +209,30 @@ Ayarlı değilse `.reference_id(...)` çağrısını atlayın; isteğe bağlı i
 
 SDK, yanıtın `data` nesnesini doğrudan döndürür.
 
-Yanıtlardaki tutarlar normalize edilir. `"129"` ile oluşturun, fatura
-`amount: "129.0000"` döndürür. Tutarları dize olarak değil, sayısal karşılaştırın.
-`amount_due`, `max(amount - amount_paid, 0)` olarak türetilir ve `amount_paid` ile aynı
-18 ondalık basamak ölçeğini kullanır; `amount_overpaid` ise onun aynasıdır,
-`max(amount_paid - amount, 0)`, yani parayı kendiniz çıkarmanız hiç gerekmez.
-`monitoring_status`, `active` ya da `ended` olur — `ended` olduğunda yatırma
-adresi artık izlenmez — ve `transfers`, onaylanmış zincir üstü tahsilat kaydıdır
-(her girdide `tx_hash`, `amount` ve `explorer_tx_url` bulunur). İkisi de test
-faturaları için `null` / `[]` olur.
+İki durum alanı. `status` muhasebe durumudur — `unpaid`, `partially_paid`, `paid`,
+`settling`, `settled`, `review_required` — ve ödeme tamamlanmış sayılan üç değer yalnızca
+paranın cüzdanınıza ne kadar yaklaştığıyla ayrılır. `checkout_status` ödeyenin gördüğüdür —
+`open`, `confirming`, `expired`, `paid`, `unavailable` — ve siparişi işlemek için asla yetki
+vermez. `payment_revision`, onaylanmış ödeme kümesi her değiştiğinde artar; böylece
+elinizdekinden eski bir anlık görüntüyü eleyebilirsiniz.
+
+Yanıtlardaki tutarlar normalize edilir. `"129"` ile oluşturun, fatura `amount: "129.0000"`
+döndürür. Tutarları dize olarak değil, sayısal karşılaştırın. `amount_due`,
+`max(amount - amount_paid, 0)` olarak türetilir ve `amount_paid` ile aynı 18 ondalık basamak
+ölçeğini kullanır; `amount_overpaid` ise onun aynasıdır, `max(amount_paid - amount, 0)`,
+yani parayı kendiniz çıkarmanız hiç gerekmez.
+
+`payment_options` ödeme talimatlarını taşır; oluşturulurken sabitlenir ve test modunda
+boştur. Önce girdinin `status` alanına, sonra tahsilat yöntemine bakın: yalnızca
+`PaymentOptionStatus::Ready` ödenebilir, `PaymentInstructions::EvmDeposit` `deposit_address`
+ve `suggested_amount` taşır, `PaymentInstructions::DirectExact` ise `recipient_address` ile
+alıcının son hanesine kadar göndermesi gereken `exact_amount` değerini taşır. Bir girdiyi
+`chain_namespace`, `chain_reference` ve `token_address` ile tanıyın, sıradaki konumuyla
+asla. `transfers` onaylanmış tahsilat kaydıdır — `transaction_id`, `event_index`, `amount`,
+`explorer_transaction_url` — ve bir ödeme onaylanana kadar boş kalır. Tüm alanlar:
+[REST API belgeleri](https://github.com/invoqmoney/api).
+
+Wire üzerindeki her enum bir `Unknown` kolu taşır. Backend bunu kırıcı saymadan yeni bir değer ekleyebilir — yeni bir zincir, yeni bir durum — ve o kol olmadan yanıtın tamamı deserialize edilemezdi. `match` ifadeniz yine de onu ele almak zorunda ve bilinmeyen bir seçenek durumu asla ödenebilir değildir.
 
 ## Barındırılan ödeme sayfası
 
@@ -277,9 +292,21 @@ Yardımcılar, ödeme tamamlanmış sayılan fatura durumlarını (`paid`, `sett
 `settled`) kabul eder ve `review_required` durumunu reddeder. `review_required`
 durumundaki bir fatura henüz `invoice.paid` webhook'u göndermez.
 
-Başarısız teslimatlar yeniden denenir; bu yüzden `reference_id` veya faturanın `id`'siyle
-idempotent şekilde işleyin ve tekrar gelen teslimatları etkisiz kılın. Hızla 2xx dönün;
-diğer her durum başarısız teslimat sayılır.
+invoq, daha önce ödenmiş bir fatura kendi tutarının altına geri düştüğünde
+`invoice.payment_reversed` de gönderir — örneğin zincir reorg'u onaylanmış bir transferi
+düşürdüğünde. Bunu `is_invoice_payment_reversed(&event)` ile yakalayın ya da
+`invoice_payment_reversed_event(&event)` ile çözün ve kendi politikanıza göre siparişi
+bekletin veya geri alın. Ödeme yardımcısının aksine bu yardımcı hiçbir durum kuralı
+uygulamaz: bir geri almayı düşürmek, artık var olmayan bir ödemenin üstünde işlenmiş bir
+sipariş bırakır. Bu SDK sürümünün henüz modellemediği bir olay tipi de doğrulanır ve olduğu
+gibi döndürülür.
+
+Başarısız teslimatlar yeniden denenir — en fazla 5 deneme; aralar 1 dakika, 5 dakika, 30
+dakika, ardından 2 saat — bu yüzden `reference_id` veya faturanın `id`'siyle idempotent
+şekilde işleyin ve tekrar gelen teslimatları etkisiz kılın. Teslimatlar sırasız da
+gelebilir: `payment_revision` değeri en yüksek olan anlık görüntüyü saklayın. Hızla 2xx
+dönün; diğer her durum başarısız teslimat sayılır ve yeniden denenir, yönlendirmeler ve
+`4xx` yanıtları da buna dahildir.
 
 SDK, 5 dakikalık bir zaman damgası toleransı tanır. Başarısız teslimatlar her yeniden
 denemede yeniden imzalanır; bu yüzden normal yeniden denenen teslimatlar yine de bu pencere

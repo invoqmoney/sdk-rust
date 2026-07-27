@@ -245,7 +245,10 @@ fn require_non_empty(value: &str, field_name: &str) -> Result<()> {
 mod tests {
     use super::{normalize_api_origin, Invoq, InvoqOptions};
     use crate::errors::{ApiErrorPayload, InvoqError};
-    use crate::types::{CreateInvoiceInput, CreateTestPaymentInput, InvoiceStatus};
+    use crate::types::{
+        CheckoutStatus, CreateInvoiceInput, CreateTestPaymentInput, InvoiceStatus,
+        PaymentInstructions, PaymentOptionStatus,
+    };
     use std::collections::HashMap;
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -311,7 +314,6 @@ mod tests {
             .invoices
             .create(
                 CreateInvoiceInput::new("149")
-                    .currency(crate::types::InvoiceCurrency::Usd)
                     .description("Test order")
                     .reference_id("order_123")
                     .return_url("https://merchant.test/thanks"),
@@ -321,8 +323,11 @@ mod tests {
         let request = server.join();
 
         assert_eq!(result.id, "inv_test_123");
+        assert_eq!(result.checkout_status, CheckoutStatus::Unavailable);
+        assert_eq!(result.payment_revision, 0);
         assert_eq!(result.amount_overpaid, "0.000000000000000000");
-        assert_eq!(result.monitoring_status, None);
+        assert_eq!(result.monitoring_ends_at, None);
+        assert!(result.payment_options.is_empty());
         assert_eq!(request.method, "POST");
         assert_eq!(request.path, "/v1/invoices");
         assert_eq!(
@@ -338,15 +343,11 @@ mod tests {
             .headers
             .get("user-agent")
             .is_some_and(|value| value.starts_with("invoq-rust/")));
+        // No currency, no mode: the create schema is strict and rejects unknown
+        // body keys with 400 invalid_request.
         assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&request.body).unwrap(),
-            serde_json::json!({
-                "amount": "149",
-                "currency": "USD",
-                "description": "Test order",
-                "reference_id": "order_123",
-                "return_url": "https://merchant.test/thanks"
-            })
+            request.body,
+            r#"{"amount":"149","description":"Test order","reference_id":"order_123","return_url":"https://merchant.test/thanks"}"#
         );
     }
 
@@ -363,15 +364,29 @@ mod tests {
         let result = client.invoices.get("inv/test 123").await.unwrap();
         let request = server.join();
 
-        assert_eq!(result.id, "inv_test_123");
-        assert_eq!(
-            result.payment_status,
-            crate::types::InvoicePaymentStatus::Unpaid
-        );
+        assert_eq!(result.id, "inv_live_123");
+        assert_eq!(result.checkout_status, CheckoutStatus::Open);
         assert_eq!(result.project.name.as_deref(), Some("Test project"));
         assert_eq!(result.amount_overpaid, "0.000000000000000000");
-        assert_eq!(result.monitoring_status, None);
         assert!(result.transfers.is_empty());
+        // Payable fields sit behind `status`, then the collection method.
+        let payable = result
+            .payment_options
+            .iter()
+            .filter_map(|option| match &option.status {
+                PaymentOptionStatus::Ready(PaymentInstructions::EvmDeposit {
+                    deposit_address,
+                    ..
+                }) => Some(deposit_address.as_str()),
+                PaymentOptionStatus::Ready(PaymentInstructions::DirectExact {
+                    exact_amount,
+                    ..
+                }) => Some(exact_amount.as_str()),
+                PaymentOptionStatus::Unavailable | PaymentOptionStatus::Unknown => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(payable, ["0x20c124f3919bb502c6126cda5bd6e5287859d5ca"]);
         assert_eq!(request.method, "GET");
         assert_eq!(request.path, "/v1/invoices/inv%2Ftest%20123");
         assert!(!request.headers.contains_key("content-type"));
@@ -402,9 +417,14 @@ mod tests {
         let request = server.join();
 
         assert_eq!(result.status, InvoiceStatus::Paid);
-        assert_eq!(result.amount_paid, "149");
+        assert_eq!(result.checkout_status, CheckoutStatus::Paid);
+        assert_eq!(result.payment_revision, 1);
+        assert_eq!(result.amount_paid, "149.000000000000000000");
         assert_eq!(result.amount_overpaid, "0.000000000000000000");
-        assert_eq!(result.monitoring_status, None);
+        assert_eq!(
+            result.fully_paid_at.as_deref(),
+            Some("2026-06-15T00:00:00.000Z")
+        );
         assert_eq!(request.path, "/v1/invoices/inv_test_123/test-payments");
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&request.body).unwrap(),
@@ -506,73 +526,104 @@ mod tests {
         );
     }
 
+    // Test mode: no payment window, no issued routes.
     fn invoice_json(status: &str) -> String {
         format!(
             r#"{{
                 "id":"inv_test_123",
                 "mode":"test",
-                "amount":"149",
+                "amount":"149.0000",
                 "currency":"USD",
                 "reference_id":"order_123",
                 "description":"Test order",
                 "return_url":"https://merchant.test/thanks",
-                "deposit_address":null,
                 "status":"{status}",
+                "checkout_status":"unavailable",
+                "payment_revision":0,
                 "amount_due":"149.000000000000000000",
                 "amount_overpaid":"0.000000000000000000",
                 "monitoring_ends_at":null,
-                "monitoring_status":null,
-                "direct_onchain_rails":[]
+                "payment_options":[]
             }}"#
         )
     }
 
+    // The public read, carrying both collection methods and both option statuses.
     fn public_invoice_json(status: &str) -> String {
         format!(
             r#"{{
-                "id":"inv_test_123",
-                "mode":"test",
-                "amount":"149",
+                "id":"inv_live_123",
+                "mode":"live",
+                "amount":"149.0000",
                 "currency":"USD",
                 "description":"Test order",
                 "return_url":null,
-                "deposit_address":null,
-                "status":"{status}",
-                "amount_due":"149.000000000000000000",
-                "amount_overpaid":"0.000000000000000000",
-                "monitoring_ends_at":null,
-                "monitoring_status":null,
-                "direct_onchain_rails":[],
-                "amount_paid":"0",
-                "payment_status":"unpaid",
                 "project":{{
                     "id":"proj_test_123",
                     "name":"Test project",
                     "logo_url":null
                 }},
-                "transfers":[]
+                "status":"{status}",
+                "checkout_status":"open",
+                "payment_revision":0,
+                "amount_paid":"0.000000000000000000",
+                "amount_due":"149.000000000000000000",
+                "amount_overpaid":"0.000000000000000000",
+                "transfers":[],
+                "monitoring_ends_at":"2026-06-16T00:00:00.000Z",
+                "payment_options":[
+                    {{
+                        "collection_method":"evm_deposit",
+                        "chain_namespace":"eip155",
+                        "chain_reference":"8453",
+                        "currency":"USD",
+                        "token_address":"0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                        "token_decimals":6,
+                        "network_label":"Base",
+                        "display_symbol":"USDC",
+                        "logo_url":null,
+                        "chain_logo_url":null,
+                        "status":"ready",
+                        "deposit_address":"0x20c124f3919bb502c6126cda5bd6e5287859d5ca",
+                        "suggested_amount":"149.000000"
+                    }},
+                    {{
+                        "collection_method":"direct_exact",
+                        "chain_namespace":"tron",
+                        "chain_reference":"0x2b6653dc",
+                        "currency":"USD",
+                        "token_address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
+                        "token_decimals":6,
+                        "network_label":"TRON",
+                        "display_symbol":"USDT",
+                        "logo_url":null,
+                        "chain_logo_url":null,
+                        "status":"unavailable"
+                    }}
+                ]
             }}"#
         )
     }
 
+    // The create shape plus amount_paid and fully_paid_at, one revision on.
     fn test_payment_invoice_json(status: &str) -> String {
         format!(
             r#"{{
                 "id":"inv_test_123",
                 "mode":"test",
-                "amount":"149",
+                "amount":"149.0000",
                 "currency":"USD",
                 "reference_id":"order_123",
                 "description":"Test order",
                 "return_url":"https://merchant.test/thanks",
-                "deposit_address":null,
                 "status":"{status}",
+                "checkout_status":"paid",
+                "payment_revision":1,
                 "amount_due":"0.000000000000000000",
                 "amount_overpaid":"0.000000000000000000",
                 "monitoring_ends_at":null,
-                "monitoring_status":null,
-                "direct_onchain_rails":[],
-                "amount_paid":"149",
+                "payment_options":[],
+                "amount_paid":"149.000000000000000000",
                 "fully_paid_at":"2026-06-15T00:00:00.000Z"
             }}"#
         )

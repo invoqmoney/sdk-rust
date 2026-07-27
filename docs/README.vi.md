@@ -28,7 +28,7 @@ Dù bạn chọn backend nào, phía trình duyệt vẫn như nhau: **`@invoq/c
 
 ```toml
 [dependencies]
-invoq = "0.2.0"
+invoq = "0.3.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -46,6 +46,9 @@ Yêu cầu Rust 1.86 trở lên.
 3. Trong phần cài đặt **webhooks** của dự án, lưu URL webhook của bạn. Mã bí mật
    webhook (`whsec_...`) cho chế độ đó chỉ hiện đúng một lần, lúc bạn bật webhook
    lần đầu — hãy lưu lại ngay. URL webhook phải là URL HTTPS truy cập công khai được.
+4. Thiết lập **Receiving wallet** của bạn trước khi lên live. Hóa đơn thử nghiệm
+   không cần ví này; hóa đơn live không có nơi để tất toán sẽ lỗi
+   `409 no_payment_options_available`.
 
 Thêm khóa bí mật vào biến môi trường của máy chủ:
 
@@ -120,7 +123,7 @@ request của SDK.
 Tạo một hóa đơn:
 
 ```rust,no_run
-use invoq::{CreateInvoiceInput, Invoq, InvoiceCurrency};
+use invoq::{CreateInvoiceInput, Invoq};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -130,7 +133,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoices
         .create(
             CreateInvoiceInput::new("149")
-                .currency(InvoiceCurrency::Usd)
                 .description("SaaS boilerplate")
                 .reference_id("order_1234")
                 .return_url("https://example.com/orders/order_1234"),
@@ -149,7 +151,8 @@ mặc định của dự án.
 
 Hãy dùng số tiền do máy chủ quyết định. Đừng tin số tiền do phía client gửi lên.
 `amount` là chuỗi thập phân USD từ `"0.01"` đến `"1000000.00"`, tối đa 2 chữ số lẻ,
-ví dụ `"129"` hoặc `"129.99"`.
+ví dụ `"129"` hoặc `"129.99"`. Đơn vị tiền luôn là USD, còn thử nghiệm hay live
+thì do khóa quyết định — cả hai đều không phải trường trong request.
 
 Dùng `reference_id` để nối các webhook `invoice.paid` về đúng đơn hàng của bạn. Nó
 cũng giúp thao tác tạo an toàn khi thử lại: tạo lại với cùng `reference_id` và
@@ -171,12 +174,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()` trả về dạng hóa đơn công khai mà checkout sử dụng. Nó bao gồm
-các trường dành cho checkout như `amount_paid`, `amount_due`, `amount_overpaid`,
-`payment_status`, `project`, `deposit_address`, `monitoring_ends_at`,
-`monitoring_status`, `transfers` và `direct_onchain_rails`,
-nhưng không bao gồm `reference_id`. Hãy dùng phản hồi khi tạo hóa đơn hoặc webhook
-`invoice.paid` khi bạn cần mã tham chiếu phía merchant của mình.
+`invoices.get()` trả về dạng hóa đơn công khai mà checkout sử dụng: dạng phản hồi
+khi tạo, cộng thêm `amount_paid`, `project` và `transfers`, và bỏ `reference_id`.
+Hãy dùng phản hồi khi tạo hóa đơn hoặc webhook `invoice.paid` khi bạn cần mã tham
+chiếu phía merchant của mình.
 
 Tạo một khoản thanh toán thử nghiệm:
 
@@ -209,15 +210,32 @@ của request. Các chuỗi tùy chọn không được đặt sẽ bị lược
 
 SDK trả về trực tiếp đối tượng `data` của phản hồi.
 
+Hai trường trạng thái. `status` là trạng thái kế toán — `unpaid`,
+`partially_paid`, `paid`, `settling`, `settled`, `review_required` — và ba giá trị
+coi như đã thanh toán chỉ khác nhau ở việc tiền đã đi được bao xa về ví của bạn.
+`checkout_status` là trạng thái người trả tiền thấy — `open`, `confirming`,
+`expired`, `paid`, `unavailable` — và không bao giờ là căn cứ xử lý đơn.
+`payment_revision` tăng mỗi khi tập hợp thanh toán đã xác nhận thay đổi, nên bạn
+bỏ được bản chụp cũ hơn bản đang giữ.
+
 Số tiền trong phản hồi được chuẩn hóa. Tạo với `"129"` thì hóa đơn trả về
 `amount: "129.0000"`. Hãy so sánh số tiền theo giá trị số, đừng so sánh dạng
-chuỗi. `amount_due` được tính là `max(amount - amount_paid, 0)` và dùng cùng
-thang 18 chữ số thập phân như `amount_paid`; `amount_overpaid` là bản đối xứng của
-nó, `max(amount_paid - amount, 0)`, nên bạn không bao giờ phải tự trừ tiền.
-`monitoring_status` là `active` hoặc `ended` — khi đã là `ended`, địa chỉ nạp tiền
-không còn được theo dõi nữa — còn `transfers` là danh sách biên nhận trên chuỗi đã
-xác nhận (mỗi mục có `tx_hash`, `amount` và `explorer_tx_url`). Cả hai đều là
-`null` / `[]` với hóa đơn thử nghiệm.
+chuỗi. `amount_due` được tính là `max(amount - amount_paid, 0)` và dùng cùng thang
+18 chữ số thập phân như `amount_paid`; `amount_overpaid` là bản đối xứng của nó,
+`max(amount_paid - amount, 0)`, nên bạn không bao giờ phải tự trừ tiền.
+
+`payment_options` chứa hướng dẫn thanh toán, cố định lúc tạo và rỗng ở chế độ thử
+nghiệm. Hãy xét `status` của từng mục trước, rồi mới tới cách thu tiền: chỉ
+`PaymentOptionStatus::Ready` mới trả được, `PaymentInstructions::EvmDeposit` mang
+`deposit_address` và `suggested_amount`, còn `PaymentInstructions::DirectExact`
+mang `recipient_address` và `exact_amount` mà người mua phải gửi đúng đến từng chữ
+số. Hãy nhận diện một mục bằng `chain_namespace`, `chain_reference` và
+`token_address`, đừng bao giờ dựa vào vị trí của nó. `transfers` là danh sách biên
+nhận đã xác nhận — `transaction_id`, `event_index`, `amount`,
+`explorer_transaction_url` — và vẫn rỗng cho tới khi có thanh toán được xác nhận.
+Tài liệu đầy đủ các trường: [REST API](https://github.com/invoqmoney/api).
+
+Mọi enum trên wire đều có nhánh `Unknown`. Backend có thể thêm một giá trị — một chuỗi mới, một trạng thái mới — mà không coi đó là thay đổi phá vỡ, và nếu thiếu nhánh đó thì toàn bộ phản hồi sẽ deserialize thất bại. `match` của bạn vẫn phải xử lý nó, và một trạng thái tùy chọn không xác định thì không bao giờ trả được.
 
 ## Trang thanh toán được lưu trữ sẵn
 
@@ -277,9 +295,21 @@ hàng của bạn. Các hàm trợ giúp chấp nhận các trạng thái hóa �
 thanh toán (`paid`, `settling` hoặc `settled`) và từ chối `review_required`.
 Hóa đơn ở trạng thái `review_required` hiện chưa gửi webhook `invoice.paid`.
 
-Các lần gửi thất bại sẽ được gửi lại, nên hãy xử lý đơn hàng một cách idempotent
-dựa trên `reference_id` hoặc `id` hóa đơn và để các lần gửi lặp lại không gây thêm
-tác dụng nào. Hãy trả về 2xx thật nhanh; mọi mã trạng thái khác đều bị tính là gửi thất bại.
+invoq cũng gửi `invoice.payment_reversed` khi một hóa đơn đã thanh toán tụt trở
+lại dưới số tiền của nó — chẳng hạn khi chuỗi reorg làm mất một giao dịch đã xác
+nhận. Bắt sự kiện đó bằng `is_invoice_payment_reversed(&event)` hoặc giải mã bằng
+`invoice_payment_reversed_event(&event)`, rồi tạm dừng hoặc hoàn tác việc xử lý
+theo chính sách của bạn. Khác với helper cho thanh toán, helper này không áp bất
+kỳ quy tắc trạng thái nào: bỏ qua một lần đảo ngược sẽ để đơn hàng vẫn được xử lý
+trên một khoản thanh toán không còn tồn tại. Một loại sự kiện mà phiên bản SDK này
+chưa mô hình hóa vẫn qua được bước xác thực và được trả về nguyên trạng.
+
+Các lần gửi thất bại sẽ được gửi lại — tối đa 5 lần, cách nhau 1 phút, 5 phút, 30
+phút, rồi 2 giờ — nên hãy xử lý đơn hàng một cách idempotent dựa trên
+`reference_id` hoặc `id` hóa đơn và để các lần gửi lặp lại không gây thêm tác dụng
+nào. Thứ tự đến cũng không được đảm bảo: hãy giữ bản chụp có `payment_revision`
+cao nhất. Hãy trả về 2xx thật nhanh; mọi mã trạng thái khác đều bị tính là gửi
+thất bại và sẽ được gửi lại, kể cả redirect và `4xx`.
 
 SDK cho phép sai lệch timestamp tối đa 5 phút. Các lần gửi thất bại được ký lại ở
 mỗi lần thử lại, nên các lần gửi lại thông thường vẫn xác minh được trong khoảng

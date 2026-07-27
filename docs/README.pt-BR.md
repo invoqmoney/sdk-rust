@@ -28,7 +28,7 @@ O lado do navegador é o mesmo para todo backend: **`@invoq/checkout`** (JavaScr
 
 ```toml
 [dependencies]
-invoq = "0.2.0"
+invoq = "0.3.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -46,6 +46,9 @@ Requer Rust 1.86 ou mais novo.
 3. Nas configurações de **webhooks** do projeto, salve a URL do seu webhook. O segredo do webhook
    (`whsec_...`) daquele modo aparece uma única vez, quando você ativa o webhook
    pela primeira vez — então guarde na hora. As URLs de webhook precisam ser URLs HTTPS públicas.
+4. Configure a sua **Receiving wallet** antes de ir para produção. Faturas de teste não
+   precisam dela; uma fatura real sem destino de liquidação falha com
+   `409 no_payment_options_available`.
 
 Adicione a chave secreta ao ambiente do seu servidor:
 
@@ -120,7 +123,7 @@ do SDK por requisição.
 Crie uma fatura:
 
 ```rust,no_run
-use invoq::{CreateInvoiceInput, Invoq, InvoiceCurrency};
+use invoq::{CreateInvoiceInput, Invoq};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -130,7 +133,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoices
         .create(
             CreateInvoiceInput::new("149")
-                .currency(InvoiceCurrency::Usd)
                 .description("SaaS boilerplate")
                 .reference_id("order_1234")
                 .return_url("https://example.com/orders/order_1234"),
@@ -149,7 +151,8 @@ padrão do projeto.
 
 Use um valor definido no servidor. Não confie em valores vindos do cliente. `amount` é uma
 string decimal em USD de `"0.01"` a `"1000000.00"`, com até 2 casas decimais, como
-`"129"` ou `"129.99"`.
+`"129"` ou `"129.99"`. A moeda é sempre USD, e teste ou live vem da chave — nenhum dos dois
+é campo da requisição.
 
 Use o `reference_id` para ligar os webhooks `invoice.paid` ao seu pedido. Ele também
 deixa a criação segura para repetir: criar de novo com o mesmo `reference_id` e os
@@ -171,12 +174,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()` retorna o formato de fatura pública usado pelo checkout. Ele inclui
-campos voltados ao checkout, como `amount_paid`, `amount_due`, `amount_overpaid`,
-`payment_status`, `project`, `deposit_address`, `monitoring_ends_at`,
-`monitoring_status`, `transfers` e `direct_onchain_rails`,
-mas não inclui `reference_id`. Use a resposta de criação ou o webhook
-`invoice.paid` quando precisar da sua referência de comerciante.
+`invoices.get()` retorna o formato de fatura pública usado pelo checkout: o formato da
+resposta de criação mais `amount_paid`, `project` e `transfers`, sem `reference_id`. Use a
+resposta de criação ou o webhook `invoice.paid` quando precisar da sua referência de
+comerciante.
 
 Crie um pagamento de teste:
 
@@ -209,15 +210,31 @@ opcionais de requisição. Strings opcionais não definidas são omitidas do JSO
 
 O SDK retorna diretamente o objeto `data` da resposta.
 
+Dois campos de status. `status` é o contábil — `unpaid`, `partially_paid`, `paid`,
+`settling`, `settled`, `review_required` — e os três valores equivalentes a pago diferem
+apenas em quanto os fundos já andaram até a sua carteira. `checkout_status` é o que o
+pagador vê — `open`, `confirming`, `expired`, `paid`, `unavailable` — e nunca autoriza
+processar o pedido. `payment_revision` sobe sempre que o conjunto de pagamentos confirmados
+muda, então você descarta um snapshot mais antigo do que o que já tem.
+
 Os valores nas respostas são normalizados. Crie com `"129"` e a fatura devolve
-`amount: "129.0000"`. Compare valores numericamente, não como texto. `amount_due`
-é derivado como `max(amount - amount_paid, 0)` e usa a mesma escala de 18 casas decimais
-de `amount_paid`; `amount_overpaid` é o espelho dele, `max(amount_paid - amount, 0)`,
-então você nunca precisa subtrair dinheiro por conta própria. `monitoring_status`
-é `active` ou `ended` — assim que fica `ended`, o endereço de depósito deixa de
-ser monitorado — e `transfers` é o registro confirmado de recebimentos on-chain
-(cada entrada tem `tx_hash`, `amount` e `explorer_tx_url`). Ambos são `null` /
-`[]` em faturas de teste.
+`amount: "129.0000"`. Compare valores numericamente, não como texto. `amount_due` é derivado
+como `max(amount - amount_paid, 0)` e usa a mesma escala de 18 casas decimais de
+`amount_paid`; `amount_overpaid` é o espelho dele, `max(amount_paid - amount, 0)`, então
+você nunca precisa subtrair dinheiro por conta própria.
+
+`payment_options` guarda as instruções de pagamento, fixadas na criação e vazio no modo de
+teste. Separe primeiro pelo `status` de cada entrada e depois pelo método de cobrança: só
+`PaymentOptionStatus::Ready` é pagável, `PaymentInstructions::EvmDeposit` traz
+`deposit_address` e `suggested_amount`, e `PaymentInstructions::DirectExact` traz
+`recipient_address` e um `exact_amount` que o comprador precisa enviar até o último dígito.
+Identifique uma entrada por `chain_namespace`, `chain_reference` e `token_address`, nunca
+pela posição dela. `transfers` é o registro confirmado de recebimentos — `transaction_id`,
+`event_index`, `amount`, `explorer_transaction_url` — e fica vazio até um pagamento
+confirmar. Referência completa:
+[documentação da API REST](https://github.com/invoqmoney/api).
+
+Todo enum do wire tem um braço `Unknown`. O backend pode adicionar um valor — uma chain nova, um estado novo — sem tratar isso como quebra, e sem esse braço a resposta inteira falharia na desserialização. O seu `match` ainda precisa lidar com ele, e um status de opção desconhecido nunca é pagável.
 
 ## Página de checkout hospedada
 
@@ -277,9 +294,21 @@ helpers aceitam status de fatura equivalentes a pagamento confirmado (`paid`, `s
 `settled`) e rejeitam `review_required`. Uma fatura `review_required` ainda não
 emite um webhook `invoice.paid`.
 
-Entregas que falham são reenviadas, então processe de forma idempotente por `reference_id` ou
-pelo `id` da fatura e trate entregas repetidas como uma operação sem efeito. Responda com 2xx
-rápido; qualquer outro status conta como entrega falhada.
+A invoq também envia `invoice.payment_reversed` quando uma fatura já paga volta a ficar
+abaixo do valor dela — por exemplo, quando uma reorganização da chain derruba uma
+transferência confirmada. Capture com `is_invoice_payment_reversed(&event)` ou decodifique
+com `invoice_payment_reversed_event(&event)` e segure ou reverta o processamento conforme a
+sua própria política. Diferente do helper de pagamento, esse não aplica nenhuma regra de
+status: descartar uma reversão deixaria um pedido processado em cima de um pagamento que não
+existe mais. Um tipo de evento que esta versão do SDK ainda não modela continua sendo
+verificado e devolvido como veio.
+
+Entregas que falham são reenviadas — até 5 tentativas, com intervalos de 1 minuto, 5
+minutos, 30 minutos e depois 2 horas — então processe de forma idempotente por
+`reference_id` ou pelo `id` da fatura e trate entregas repetidas como uma operação sem
+efeito. Elas também podem chegar fora de ordem: fique com o snapshot de maior
+`payment_revision`. Responda com 2xx rápido; qualquer outro status conta como entrega
+falhada e é reenviado, inclusive redirecionamentos e `4xx`.
 
 O SDK permite uma tolerância de 5 minutos no timestamp. Entregas que falham são assinadas de novo
 a cada nova tentativa, então entregas reenviadas comuns ainda passam na verificação dentro dessa

@@ -28,7 +28,7 @@ Sisi browser-nya sama untuk setiap backend: **`@invoq/checkout`** (JavaScript, d
 
 ```toml
 [dependencies]
-invoq = "0.2.0"
+invoq = "0.3.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -46,6 +46,8 @@ Membutuhkan Rust 1.86 atau lebih baru.
 3. Di pengaturan **webhooks** proyek Anda, simpan URL webhook Anda. Kunci rahasia webhook
    (`whsec_...`) untuk mode itu hanya ditampilkan sekali, saat webhook pertama kali diaktifkan —
    jadi langsung simpan. URL webhook harus berupa URL HTTPS yang bisa diakses publik.
+4. Siapkan **Receiving wallet** Anda sebelum go live. Invoice uji coba tidak membutuhkannya;
+   invoice live tanpa tujuan penyelesaian gagal dengan `409 no_payment_options_available`.
 
 Tambahkan kunci rahasia ke lingkungan server Anda:
 
@@ -120,7 +122,7 @@ per request.
 Buat invoice:
 
 ```rust,no_run
-use invoq::{CreateInvoiceInput, Invoq, InvoiceCurrency};
+use invoq::{CreateInvoiceInput, Invoq};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -130,7 +132,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoices
         .create(
             CreateInvoiceInput::new("149")
-                .currency(InvoiceCurrency::Usd)
                 .description("SaaS boilerplate")
                 .reference_id("order_1234")
                 .return_url("https://example.com/orders/order_1234"),
@@ -149,7 +150,8 @@ proyek.
 
 Tentukan jumlahnya di sisi server. Jangan percaya jumlah yang dikirim klien. `amount` adalah
 string desimal USD dari `"0.01"` sampai `"1000000.00"` dengan maksimal 2 angka di belakang koma,
-misalnya `"129"` atau `"129.99"`.
+misalnya `"129"` atau `"129.99"`. Mata uangnya selalu USD, dan mode uji coba atau live
+ditentukan oleh kuncinya — keduanya bukan field permintaan.
 
 Pakai `reference_id` untuk memetakan webhook `invoice.paid` kembali ke pesanan Anda. Ini juga
 membuat pembuatan invoice aman diulang: membuat lagi dengan `reference_id` yang sama dan
@@ -171,12 +173,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()` mengembalikan bentuk invoice publik yang dipakai checkout. Bentuk ini
-mencakup field untuk checkout seperti `amount_paid`, `amount_due`, `amount_overpaid`,
-`payment_status`, `project`, `deposit_address`, `monitoring_ends_at`,
-`monitoring_status`, `transfers`, dan `direct_onchain_rails`, tetapi
-tidak menyertakan `reference_id`. Gunakan respons pembuatan atau webhook `invoice.paid`
-saat Anda butuh referensi merchant Anda.
+`invoices.get()` mengembalikan bentuk invoice publik yang dipakai checkout: bentuk respons
+pembuatan ditambah `amount_paid`, `project`, dan `transfers`, dikurangi `reference_id`. Gunakan
+respons pembuatan atau webhook `invoice.paid` saat Anda butuh referensi merchant Anda.
 
 Buat pembayaran uji coba:
 
@@ -209,15 +208,32 @@ opsional. String opsional yang tidak diisi dihilangkan dari JSON request.
 
 SDK mengembalikan objek `data` dari respons secara langsung.
 
+Dua field status. `status` adalah status pembukuan — `unpaid`, `partially_paid`, `paid`,
+`settling`, `settled`, `review_required` — dan tiga nilai yang berarti sudah dibayar hanya
+berbeda pada seberapa jauh dananya bergerak ke dompet Anda. `checkout_status` adalah status
+yang dilihat pembayar — `open`, `confirming`, `expired`, `paid`, `unavailable` — dan tidak
+pernah menjadi izin memproses pesanan. `payment_revision` naik setiap kali kumpulan pembayaran
+terkonfirmasi berubah, jadi Anda bisa membuang snapshot yang lebih lama dari yang sudah Anda
+pegang.
+
 Jumlah di respons dinormalkan. Buat dengan `"129"` dan invoice mengembalikan
 `amount: "129.0000"`. Bandingkan jumlah secara numerik, bukan sebagai string. `amount_due`
-diturunkan sebagai `max(amount - amount_paid, 0)` dan memakai skala 18 desimal yang sama
-dengan `amount_paid`; `amount_overpaid` adalah kebalikannya, `max(amount_paid - amount, 0)`,
-jadi Anda tidak perlu mengurangkannya sendiri. `monitoring_status` bernilai
-`active` atau `ended` — begitu bernilai `ended`, alamat deposit tidak lagi
-dipantau — dan `transfers` adalah jejak penerimaan on-chain yang sudah
-terkonfirmasi (tiap entri punya `tx_hash`, `amount`, dan `explorer_tx_url`).
-Keduanya bernilai `null` / `[]` untuk invoice uji coba.
+diturunkan sebagai `max(amount - amount_paid, 0)` dan memakai skala 18 desimal yang sama dengan
+`amount_paid`; `amount_overpaid` adalah kebalikannya, `max(amount_paid - amount, 0)`, jadi Anda
+tidak perlu mengurangkannya sendiri.
+
+`payment_options` berisi instruksi pembayarannya, ditetapkan saat pembuatan dan kosong di mode
+uji coba. Bedakan dulu lewat `status` tiap entri, lalu lewat metode penagihannya: hanya
+`PaymentOptionStatus::Ready` yang bisa dibayar, `PaymentInstructions::EvmDeposit` membawa
+`deposit_address` dan `suggested_amount`, dan `PaymentInstructions::DirectExact` membawa
+`recipient_address` serta `exact_amount` yang harus dikirim pembeli persis sampai digit
+terakhir. Kenali sebuah entri lewat `chain_namespace`, `chain_reference`, dan `token_address`,
+jangan lewat posisinya. `transfers` adalah jejak penerimaan terkonfirmasi — `transaction_id`,
+`event_index`, `amount`, `explorer_transaction_url` — dan tetap kosong sampai ada pembayaran
+yang terkonfirmasi. Referensi field lengkap:
+[dokumen REST API](https://github.com/invoqmoney/api).
+
+Setiap enum di wire punya arm `Unknown`. Backend bisa menambah nilai — chain baru, state baru — tanpa menganggapnya breaking, dan tanpa arm itu seluruh respons akan gagal dideserialisasi. `match` Anda tetap harus menanganinya, dan status opsi yang tidak dikenal tidak pernah bisa dibayar.
 
 ## Halaman checkout yang dihosting
 
@@ -277,9 +293,20 @@ pesanan Anda. Kedua helper ini menerima status invoice yang setara dengan sudah 
 (`paid`, `settling`, atau `settled`) dan menolak `review_required`. Invoice dengan status
 `review_required` belum mengirimkan webhook `invoice.paid`.
 
-Pengiriman yang gagal akan diulang, jadi proses pesanan secara idempoten berdasarkan
-`reference_id` atau `id` invoice dan jadikan pengiriman berulang sebagai operasi tanpa
-efek. Balas 2xx secepatnya; status lain apa pun dihitung sebagai pengiriman gagal.
+invoq juga mengirim `invoice.payment_reversed` ketika invoice yang tadinya lunas turun lagi di
+bawah jumlahnya — misalnya karena reorg rantai membatalkan transfer yang sudah terkonfirmasi.
+Tangkap event itu dengan `is_invoice_payment_reversed(&event)` atau baca datanya dengan
+`invoice_payment_reversed_event(&event)`, lalu tahan atau batalkan pemrosesan sesuai kebijakan
+Anda sendiri. Berbeda dengan helper pembayaran, helper ini tidak menerapkan aturan status apa
+pun: membuang satu pembatalan akan meninggalkan pesanan yang sudah diproses atas pembayaran
+yang tidak ada lagi. Tipe event yang belum dikenal versi SDK ini tetap lolos verifikasi dan
+dikembalikan apa adanya.
+
+Pengiriman yang gagal akan diulang — sampai 5 kali, dengan jeda 1 menit, 5 menit, 30 menit,
+lalu 2 jam — jadi proses pesanan secara idempoten berdasarkan `reference_id` atau `id` invoice
+dan jadikan pengiriman berulang sebagai operasi tanpa efek. Urutan kedatangannya juga tidak
+dijamin: simpan snapshot dengan `payment_revision` tertinggi. Balas 2xx secepatnya; status lain
+apa pun dihitung sebagai pengiriman gagal dan akan diulang, termasuk redirect dan `4xx`.
 
 SDK mengizinkan toleransi timestamp 5 menit. Pengiriman yang gagal ditandatangani ulang
 pada tiap percobaan ulang, jadi pengiriman ulang yang normal tetap lolos verifikasi dalam

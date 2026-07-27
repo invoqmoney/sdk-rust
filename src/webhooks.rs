@@ -1,7 +1,8 @@
 use crate::errors::{InvoqSignatureVerificationError, SignatureVerificationErrorCode};
-use crate::types::{InvoicePaidEvent, InvoqWebhookEvent};
+use crate::types::{InvoicePaidEvent, InvoicePaymentReversedEvent, InvoqWebhookEvent};
 use hmac::{Hmac, Mac};
 use http::HeaderMap;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 use sha2::Sha256;
 use std::collections::{BTreeMap, HashMap};
@@ -109,9 +110,49 @@ pub fn is_invoice_paid(event: &InvoqWebhookEvent) -> bool {
 }
 
 /// Decode a verified invoice.paid webhook event.
+///
+/// Paid-equivalent invoice statuses only: `review_required` has money against it
+/// but is not cleared for fulfillment, so it does not decode. This guard fails
+/// closed — an event it cannot recognize is never fulfilled.
 pub fn invoice_paid_event(event: &InvoqWebhookEvent) -> Option<InvoicePaidEvent> {
-    let invoice = event
-        .as_object()?
+    lifecycle_event(event, "invoice.paid")
+}
+
+/// Return whether a verified webhook event matches the
+/// invoice.payment_reversed shape.
+pub fn is_invoice_payment_reversed(event: &InvoqWebhookEvent) -> bool {
+    invoice_payment_reversed_event(event).is_some()
+}
+
+/// Decode a verified invoice.payment_reversed webhook event.
+///
+/// Unlike [`invoice_paid_event`] this applies no status rule, and
+/// [`crate::InvoicePaymentReversedEventInvoice`] keeps `status` as a plain
+/// string on purpose: rejecting an unrecognized status would drop the event and
+/// leave an order fulfilled on a payment that no longer exists.
+pub fn invoice_payment_reversed_event(
+    event: &InvoqWebhookEvent,
+) -> Option<InvoicePaymentReversedEvent> {
+    lifecycle_event(event, "invoice.payment_reversed")
+}
+
+/// Shape check shared by both invoice lifecycle events.
+///
+/// `reference_id` and `fully_paid_at` are nullable but always present, and an
+/// `Option` field would also accept them missing, so they are checked here.
+/// Every other field — including `payment_revision`, which must be an integer —
+/// is enforced by the target type.
+fn lifecycle_event<T>(event: &InvoqWebhookEvent, event_type: &str) -> Option<T>
+where
+    T: DeserializeOwned,
+{
+    let object = event.as_object()?;
+
+    if object.get("type")?.as_str()? != event_type {
+        return None;
+    }
+
+    let invoice = object
         .get("data")?
         .as_object()?
         .get("invoice")?
@@ -121,13 +162,7 @@ pub fn invoice_paid_event(event: &InvoqWebhookEvent) -> Option<InvoicePaidEvent>
         return None;
     }
 
-    let parsed: InvoicePaidEvent = serde_json::from_value(event.clone()).ok()?;
-
-    if parsed.event_type == "invoice.paid" {
-        Some(parsed)
-    } else {
-        None
-    }
+    serde_json::from_value(event.clone()).ok()
 }
 
 fn verify_webhook_with_now<H>(
@@ -333,33 +368,39 @@ fn signature_error(
 mod tests {
     use super::{hmac_sha256_hex, invoice_paid_event, verify_webhook_with_now};
     use crate::errors::SignatureVerificationErrorCode;
-    use crate::webhooks::{is_invoice_paid, verify_webhook};
+    use crate::types::InvoqWebhookEvent;
+    use crate::webhooks::{
+        invoice_payment_reversed_event, is_invoice_paid, is_invoice_payment_reversed,
+        verify_webhook,
+    };
     use http::HeaderMap;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use std::collections::HashMap;
 
     const SECRET: &str = "whsec_test_123";
     const TIMESTAMP: i128 = 1_710_000_000;
+    // An event type this version does not model: verification is shape-agnostic,
+    // so a new backend event never fails on an older SDK.
     const BODY: &str =
-        r#"{"id":"evt_test","type":"webhook.ping","data":{"project":{"id":"proj_test"}}}"#;
+        r#"{"id":"evt_test","type":"invoice.future_event","data":{"invoice":{"id":"inv_test"}}}"#;
     const HEADER: &str =
-        "t=1710000000,v1=eeafd628acb4e854f5fd942644490b313220dcc7906303d0c8572050ee7795ff";
+        "t=1710000000,v1=7882995406911f86ee0e8a85feba7e21befe10ead08701ff7ff066738ca4c28e";
 
     #[test]
     fn verifies_string_payload_signatures() {
         let event = verify_webhook_with_now(BODY.as_bytes(), HEADER, SECRET, TIMESTAMP).unwrap();
 
         assert_eq!(event["id"], "evt_test");
-        assert_eq!(event["type"], "webhook.ping");
+        assert_eq!(event["type"], "invoice.future_event");
     }
 
     #[test]
     fn verifies_byte_payloads_and_header_maps() {
         let bytes = hex_to_bytes(
-            "7b226964223a226576745f6279746573222c2274797065223a22776562686f6f6b2e70696e67222c2264617461223a7b2270726f6a656374223a7b226964223a2270726f6a5f6279746573227d7d7d",
+            "7b226964223a226576745f6279746573222c2274797065223a22696e766f6963652e6675747572655f6576656e74222c2264617461223a7b22696e766f696365223a7b226964223a22696e765f6279746573227d7d7d",
         );
         let header =
-            "t=1710000001,v1=1ee237dd9e509e515eca754c3a34da3536e8c76cfc8ce1fd0a4e74d1366d20e2";
+            "t=1710000001,v1=fa0fde1c5d73fe059235b19dc1d7785e1d3c695e055dfcfa8f69a1202bacee37";
         let mut headers = HeaderMap::new();
         headers.insert("invoq-signature", header.parse().unwrap());
 
@@ -374,7 +415,7 @@ mod tests {
         headers.append("invoq-signature", "t=1710000000".parse().unwrap());
         headers.append(
             "invoq-signature",
-            "v1=eeafd628acb4e854f5fd942644490b313220dcc7906303d0c8572050ee7795ff"
+            "v1=7882995406911f86ee0e8a85feba7e21befe10ead08701ff7ff066738ca4c28e"
                 .parse()
                 .unwrap(),
         );
@@ -387,7 +428,7 @@ mod tests {
     #[test]
     fn uses_last_v1_signature() {
         let header = format!(
-            "t=1710000000,v1={},v1=eeafd628acb4e854f5fd942644490b313220dcc7906303d0c8572050ee7795ff",
+            "t=1710000000,v1={},v1=7882995406911f86ee0e8a85feba7e21befe10ead08701ff7ff066738ca4c28e",
             "0".repeat(64)
         );
 
@@ -396,7 +437,7 @@ mod tests {
         assert_eq!(event["id"], "evt_test");
 
         let header = format!(
-            "t=1710000000,v1=eeafd628acb4e854f5fd942644490b313220dcc7906303d0c8572050ee7795ff,v1={}",
+            "t=1710000000,v1=7882995406911f86ee0e8a85feba7e21befe10ead08701ff7ff066738ca4c28e,v1={}",
             "0".repeat(64)
         );
 
@@ -413,7 +454,7 @@ mod tests {
 
         let event = verify_webhook_with_now(BODY.as_bytes(), headers, SECRET, TIMESTAMP).unwrap();
 
-        assert_eq!(event["type"], "webhook.ping");
+        assert_eq!(event["type"], "invoice.future_event");
     }
 
     #[test]
@@ -451,143 +492,181 @@ mod tests {
     }
 
     #[test]
-    fn checks_invoice_paid_shape_before_decoding() {
-        let event = json!({
-            "id": "evt_paid",
-            "type": "invoice.paid",
-            "mode": "test",
-            "created_at": "2026-06-15T00:00:00.000Z",
-            "data": {
-                "invoice": {
-                    "id": "inv_test",
-                    "mode": "test",
-                    "status": "paid",
-                    "amount": "149",
-                    "currency": "USD",
-                    "amount_paid": "149",
-                    "reference_id": "order_123",
-                    "fully_paid_at": "2026-06-15T00:00:00.000Z"
-                }
-            }
-        });
+    fn accepts_every_paid_equivalent_status() {
+        for status in ["paid", "settling", "settled"] {
+            let mut invoice = paid_invoice();
+            invoice["status"] = json!(status);
 
-        assert!(is_invoice_paid(&event));
-        assert_eq!(
-            invoice_paid_event(&event)
-                .unwrap()
-                .data
-                .invoice
-                .reference_id,
-            Some("order_123".to_string())
-        );
+            assert!(is_invoice_paid(&lifecycle_event("invoice.paid", invoice)));
+        }
+    }
 
-        let nullable_optionals = json!({
-            "id": "evt_paid",
-            "type": "invoice.paid",
-            "mode": "test",
-            "created_at": "2026-06-15T00:00:00.000Z",
-            "data": {
-                "invoice": {
-                    "id": "inv_test",
-                    "mode": "test",
-                    "status": "paid",
-                    "amount": "149",
-                    "currency": "USD",
-                    "amount_paid": "149",
-                    "reference_id": null,
-                    "fully_paid_at": null
-                }
-            }
-        });
+    #[test]
+    fn checks_the_full_invoice_shape_before_decoding() {
+        for field in INVOICE_FIELDS {
+            let invoice = without_field(paid_invoice(), field);
 
-        assert!(is_invoice_paid(&nullable_optionals));
-        let parsed = invoice_paid_event(&nullable_optionals).unwrap();
-        assert_eq!(parsed.data.invoice.reference_id, None);
-        assert_eq!(parsed.data.invoice.fully_paid_at, None);
-
-        for status in ["settling", "settled"] {
-            let paid_like = json!({
-                "id": "evt_paid",
-                "type": "invoice.paid",
-                "mode": "test",
-                "created_at": "2026-06-15T00:00:00.000Z",
-                "data": {
-                    "invoice": {
-                        "id": "inv_test",
-                        "mode": "test",
-                        "status": status,
-                        "amount": "149",
-                        "currency": "USD",
-                        "amount_paid": "149",
-                        "reference_id": "order_123",
-                        "fully_paid_at": "2026-06-15T00:00:00.000Z"
-                    }
-                }
-            });
-
-            assert!(is_invoice_paid(&paid_like));
+            assert!(
+                !is_invoice_paid(&lifecycle_event("invoice.paid", invoice)),
+                "expected a missing {field} to be rejected"
+            );
         }
 
-        let review_required = json!({
-            "id": "evt_paid",
-            "type": "invoice.paid",
-            "mode": "test",
-            "created_at": "2026-06-15T00:00:00.000Z",
-            "data": {
-                "invoice": {
-                    "id": "inv_test",
-                    "mode": "test",
-                    "status": "review_required",
-                    "amount": "149",
-                    "currency": "USD",
-                    "amount_paid": "149",
-                    "reference_id": "order_123",
-                    "fully_paid_at": null
-                }
-            }
-        });
+        for payment_revision in [json!("1"), json!(1.5), json!(-1)] {
+            let mut invoice = paid_invoice();
+            invoice["payment_revision"] = payment_revision;
 
-        assert!(!is_invoice_paid(&review_required));
+            assert!(!is_invoice_paid(&lifecycle_event("invoice.paid", invoice)));
+        }
+    }
 
-        let missing_amount_paid = json!({
-            "id": "evt_paid",
-            "type": "invoice.paid",
-            "mode": "test",
-            "created_at": "2026-06-15T00:00:00.000Z",
-            "data": {
-                "invoice": {
-                    "id": "inv_test",
-                    "mode": "test",
-                    "status": "paid",
-                    "amount": "149",
-                    "currency": "USD",
-                    "reference_id": "order_123",
-                    "fully_paid_at": "2026-06-15T00:00:00.000Z"
-                }
-            }
-        });
+    #[test]
+    fn rejects_a_mangled_envelope_around_a_valid_invoice() {
+        for field in ["id", "mode", "created_at", "data"] {
+            let event = without_field(lifecycle_event("invoice.paid", paid_invoice()), field);
 
-        assert!(!is_invoice_paid(&missing_amount_paid));
+            assert!(
+                !is_invoice_paid(&event),
+                "expected a missing envelope {field} to be rejected"
+            );
+        }
+    }
 
-        let missing_reference_id = json!({
-            "id": "evt_paid",
-            "type": "invoice.paid",
-            "mode": "test",
-            "created_at": "2026-06-15T00:00:00.000Z",
-            "data": {
-                "invoice": {
-                    "id": "inv_test",
-                    "mode": "test",
-                    "status": "paid",
-                    "amount": "149",
-                    "currency": "USD",
-                    "amount_paid": "149",
-                    "fully_paid_at": "2026-06-15T00:00:00.000Z"
-                }
-            }
-        });
+    #[test]
+    fn rejects_statuses_that_are_not_cleared_for_fulfillment() {
+        for status in ["review_required", "partially_paid", "unexpected"] {
+            let mut invoice = paid_invoice();
+            invoice["status"] = json!(status);
 
-        assert!(!is_invoice_paid(&missing_reference_id));
+            assert!(!is_invoice_paid(&lifecycle_event("invoice.paid", invoice)));
+        }
+    }
+
+    #[test]
+    fn rejects_a_reversal_whatever_it_reverted_the_invoice_to() {
+        assert!(!is_invoice_paid(&lifecycle_event(
+            "invoice.payment_reversed",
+            reversed_invoice()
+        )));
+
+        let mut invoice = reversed_invoice();
+        invoice["status"] = json!("paid");
+
+        assert!(!is_invoice_paid(&lifecycle_event(
+            "invoice.payment_reversed",
+            invoice
+        )));
+    }
+
+    #[test]
+    fn accepts_a_reversal_in_any_canonical_status() {
+        for status in [
+            "unpaid",
+            "partially_paid",
+            "review_required",
+            "paid",
+            "settling",
+            "settled",
+        ] {
+            let mut invoice = reversed_invoice();
+            invoice["status"] = json!(status);
+
+            assert!(is_invoice_payment_reversed(&lifecycle_event(
+                "invoice.payment_reversed",
+                invoice
+            )));
+        }
+    }
+
+    #[test]
+    fn checks_the_same_shared_invoice_shape_for_reversals() {
+        for field in INVOICE_FIELDS {
+            let invoice = without_field(reversed_invoice(), field);
+
+            assert!(
+                !is_invoice_payment_reversed(&lifecycle_event("invoice.payment_reversed", invoice)),
+                "expected a missing {field} to be rejected"
+            );
+        }
+
+        let mut invoice = reversed_invoice();
+        invoice["payment_revision"] = json!("2");
+
+        assert!(!is_invoice_payment_reversed(&lifecycle_event(
+            "invoice.payment_reversed",
+            invoice
+        )));
+    }
+
+    /// The reversal guard must not fail closed like the paid guard: dropping a
+    /// reversal leaves an order fulfilled on a payment that no longer exists.
+    #[test]
+    fn accepts_a_reversal_status_this_version_does_not_know() {
+        let mut invoice = reversed_invoice();
+        invoice["status"] = json!("unexpected");
+
+        assert!(is_invoice_payment_reversed(&lifecycle_event(
+            "invoice.payment_reversed",
+            invoice
+        )));
+    }
+
+    #[test]
+    fn rejects_a_paid_event_as_a_reversal() {
+        assert!(!is_invoice_payment_reversed(&lifecycle_event(
+            "invoice.paid",
+            paid_invoice()
+        )));
+    }
+
+    /// The documented path: verify, then branch on the event type.
+    #[test]
+    fn carries_signed_lifecycle_events_through_to_their_typed_fields() {
+        let paid_body = lifecycle_event("invoice.paid", paid_invoice()).to_string();
+        let paid = verify_webhook_with_now(
+            paid_body.as_bytes(),
+            signature_header(&paid_body),
+            SECRET,
+            TIMESTAMP,
+        )
+        .unwrap();
+        let paid = invoice_paid_event(&paid).unwrap();
+
+        assert_eq!(paid.event_type, "invoice.paid");
+        assert_eq!(paid.data.invoice.status, crate::InvoicePaidStatus::Paid);
+        assert_eq!(paid.data.invoice.reference_id.as_deref(), Some("order_123"));
+        assert_eq!(paid.data.invoice.payment_revision, 1);
+
+        let reversed_body =
+            lifecycle_event("invoice.payment_reversed", reversed_invoice()).to_string();
+        let reversed = verify_webhook_with_now(
+            reversed_body.as_bytes(),
+            signature_header(&reversed_body),
+            SECRET,
+            TIMESTAMP,
+        )
+        .unwrap();
+
+        assert!(!is_invoice_paid(&reversed));
+
+        let reversed = invoice_payment_reversed_event(&reversed).unwrap();
+
+        assert_eq!(reversed.data.invoice.status, "partially_paid");
+        assert_eq!(reversed.data.invoice.payment_revision, 2);
+        assert_eq!(reversed.data.invoice.fully_paid_at, None);
+    }
+
+    #[test]
+    fn decodes_nullable_lifecycle_invoice_fields_as_none() {
+        let mut invoice = paid_invoice();
+        invoice["reference_id"] = json!(null);
+        invoice["fully_paid_at"] = json!(null);
+
+        let event = lifecycle_event("invoice.paid", invoice);
+        let parsed = invoice_paid_event(&event).unwrap();
+
+        assert_eq!(parsed.data.invoice.reference_id, None);
+        assert_eq!(parsed.data.invoice.fully_paid_at, None);
     }
 
     #[test]
@@ -598,6 +677,71 @@ mod tests {
             event.code,
             SignatureVerificationErrorCode::TimestampOutsideTolerance
         );
+    }
+
+    // Every field the shared envelope check requires of data.invoice.
+    const INVOICE_FIELDS: [&str; 9] = [
+        "id",
+        "mode",
+        "status",
+        "amount",
+        "currency",
+        "amount_paid",
+        "reference_id",
+        "payment_revision",
+        "fully_paid_at",
+    ];
+
+    // The snapshot at the moment the invoice was first fully paid.
+    fn paid_invoice() -> Value {
+        json!({
+            "id": "inv_test",
+            "mode": "test",
+            "status": "paid",
+            "amount": "149.0000",
+            "currency": "USD",
+            "amount_paid": "149.000000000000000000",
+            "reference_id": "order_123",
+            "payment_revision": 1,
+            "fully_paid_at": "2026-06-15T00:00:00.000Z"
+        })
+    }
+
+    // The same invoice after a credited transfer was reversed.
+    fn reversed_invoice() -> Value {
+        let mut invoice = paid_invoice();
+        invoice["status"] = json!("partially_paid");
+        invoice["amount_paid"] = json!("20.000000000000000000");
+        invoice["payment_revision"] = json!(2);
+        invoice["fully_paid_at"] = json!(null);
+        invoice
+    }
+
+    fn lifecycle_event(event_type: &str, invoice: Value) -> InvoqWebhookEvent {
+        json!({
+            "id": "wdel_test",
+            "type": event_type,
+            "mode": "test",
+            "created_at": "2026-06-15T00:00:00.000Z",
+            "data": {
+                "invoice": invoice
+            }
+        })
+    }
+
+    fn without_field(mut value: Value, field: &str) -> Value {
+        value
+            .as_object_mut()
+            .expect("test payloads are JSON objects")
+            .remove(field);
+        value
+    }
+
+    fn signature_header(body: &str) -> String {
+        format!(
+            "t=1710000000,v1={}",
+            hmac_sha256_hex(SECRET, "1710000000", body.as_bytes())
+        )
     }
 
     fn assert_signature_error(

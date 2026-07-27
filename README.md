@@ -26,7 +26,7 @@ The browser side is the same for every backend: **`@invoq/checkout`** (JavaScrip
 
 ```toml
 [dependencies]
-invoq = "0.2.0"
+invoq = "0.3.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -44,6 +44,9 @@ Requires Rust 1.86 or newer.
 3. In your project's webhooks settings, save your webhook URL. The webhook
    secret (`whsec_...`) for that mode is shown once when you first enable the
    webhook, so store it right away. Webhook URLs must be public HTTPS URLs.
+4. Set up your Receiving wallet before going live. Test invoices do not need
+   one; a live invoice with nowhere to settle fails with
+   `409 no_payment_options_available`.
 
 Add the secret key to your server environment:
 
@@ -118,7 +121,7 @@ SDK timeout.
 Create an invoice:
 
 ```rust,no_run
-use invoq::{CreateInvoiceInput, Invoq, InvoiceCurrency};
+use invoq::{CreateInvoiceInput, Invoq};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -128,7 +131,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoices
         .create(
             CreateInvoiceInput::new("149")
-                .currency(InvoiceCurrency::Usd)
                 .description("SaaS boilerplate")
                 .reference_id("order_1234")
                 .return_url("https://example.com/orders/order_1234"),
@@ -147,7 +149,8 @@ default return URL.
 
 Use a server-side amount. Do not trust client-supplied amounts. `amount` is a
 decimal USD string from `"0.01"` to `"1000000.00"` with up to 2 decimal places, such
-as `"129"` or `"129.99"`.
+as `"129"` or `"129.99"`. Currency is always USD, and test or live comes from the
+key — neither is a request field.
 
 Use `reference_id` to map `invoice.paid` webhooks back to your order. It also
 makes creation retry-safe: creating again with the same `reference_id` and the
@@ -169,12 +172,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()` returns the public invoice shape used by checkout. It includes
-checkout-facing fields such as `amount_paid`, `amount_due`, `amount_overpaid`,
-`payment_status`, `project`, `deposit_address`, `monitoring_ends_at`,
-`monitoring_status`, `transfers`, and `direct_onchain_rails`,
-but it does not include `reference_id`. Use the create response or the
-`invoice.paid` webhook when you need your merchant reference.
+`invoices.get()` returns the public invoice shape used by checkout: the create
+shape plus `amount_paid`, `project`, and `transfers`, minus `reference_id`. Use
+the create response or the `invoice.paid` webhook when you need your merchant
+reference.
 
 Create a test payment:
 
@@ -207,14 +208,35 @@ request strings. Unset optional strings are omitted from request JSON.
 
 The SDK returns the response `data` object directly.
 
+Two status fields. `status` is the accounting one — `unpaid`, `partially_paid`,
+`paid`, `settling`, `settled`, `review_required` — where the three paid-like
+values differ only in how far the funds have moved to your wallet.
+`checkout_status` is payer-facing — `open`, `confirming`, `expired`, `paid`,
+`unavailable` — and never authorizes fulfillment. `payment_revision` increments
+whenever the confirmed payment set changes, so you can discard a snapshot older
+than one you already hold.
+
 Amounts in responses are normalized. Create with `"129"` and the invoice returns
 `amount: "129.0000"`. Compare amounts numerically, not as strings. `amount_due`
 is derived as `max(amount - amount_paid, 0)` and uses the same 18-decimal scale
 as `amount_paid`; `amount_overpaid` is its mirror, `max(amount_paid - amount, 0)`,
-so you never subtract money yourself. `monitoring_status` is `active` or `ended`
-— once it is `ended`, the deposit address is no longer watched — and `transfers`
-is the confirmed on-chain receipt trail (each entry has `tx_hash`, `amount`, and
-`explorer_tx_url`). Both are `null` / `[]` for test invoices.
+so you never subtract money yourself.
+
+`payment_options` holds the payment instructions, fixed at creation and empty in
+test mode. Match on an option's `status`, then on its collection method: only
+`PaymentOptionStatus::Ready` is payable, `PaymentInstructions::EvmDeposit`
+carries `deposit_address` and `suggested_amount`, and
+`PaymentInstructions::DirectExact` carries `recipient_address` and an
+`exact_amount` the buyer must send to the digit. Identify an option by
+`chain_namespace`, `chain_reference`, and `token_address`, never by its position.
+`transfers` is the confirmed receipt trail — `transaction_id`, `event_index`,
+`amount`, `explorer_transaction_url` — and stays empty until a payment confirms.
+Full field reference: [REST API docs](https://github.com/invoqmoney/api).
+
+Every wire enum carries an `Unknown` arm. The backend can add a value — a new
+chain, a new state — without treating it as breaking, and without that arm the
+whole response would fail to deserialize. Your `match` still has to handle it,
+and an unknown option status is never payable.
 
 ## Hosted checkout page
 
@@ -274,9 +296,21 @@ helpers accept paid-equivalent invoice statuses (`paid`, `settling`, or
 `settled`) and reject `review_required`. A `review_required` invoice does not
 emit an `invoice.paid` webhook yet.
 
-Failed deliveries are retried, so fulfill idempotently by `reference_id` or
-invoice `id` and make repeat deliveries a no-op. Respond with a 2xx quickly; any
-other status counts as a failed delivery.
+invoq also sends `invoice.payment_reversed` when a previously paid invoice drops
+back below its amount — a chain reorg dropping a confirmed transfer, for example.
+Catch it with `is_invoice_payment_reversed(&event)` or decode it with
+`invoice_payment_reversed_event(&event)`, then hold or reverse the fulfillment
+according to your own policy. That guard applies no status rule, unlike the paid
+one: dropping a reversal would leave an order fulfilled on a payment that no
+longer exists. An event type this SDK version does not model still verifies and
+is returned as-is.
+
+Failed deliveries are retried — up to 5 attempts, backing off 1 minute,
+5 minutes, 30 minutes, then 2 hours — so fulfill idempotently by `reference_id`
+or invoice `id` and make repeat deliveries a no-op. Deliveries can also arrive
+out of order: keep the snapshot with the highest `payment_revision`. Respond with
+a 2xx quickly; any other status counts as a failed delivery and is retried,
+including redirects and `4xx`.
 
 The SDK allows a 5-minute timestamp tolerance. Failed deliveries are signed again
 on each retry, so normal retried deliveries still verify inside that window. The

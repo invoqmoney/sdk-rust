@@ -118,12 +118,15 @@ fn parse_fields(value: &Value) -> Option<Vec<ApiErrorField>> {
 
 fn parse_field(value: &Value) -> Option<ApiErrorField> {
     let object = value.as_object()?;
+    // An unrecognized location keeps the field error rather than discarding it:
+    // dropping it would leave the caller holding an error with no detail at the
+    // moment they most need it.
     let location = match object.get("location")?.as_str()? {
         "query" => ApiErrorLocation::Query,
         "path" => ApiErrorLocation::Path,
         "body" => ApiErrorLocation::Body,
         "header" => ApiErrorLocation::Header,
-        _ => return None,
+        other => ApiErrorLocation::Unknown(other.to_string()),
     };
 
     Some(ApiErrorField {
@@ -154,6 +157,7 @@ fn map_read_response_error(error: reqwest::Error) -> InvoqError {
 mod tests {
     use super::api_error_from_response;
     use crate::errors::ApiErrorPayload;
+    use crate::types::ApiErrorLocation;
     use serde_json::json;
 
     #[test]
@@ -179,7 +183,7 @@ mod tests {
     }
 
     #[test]
-    fn ignores_invalid_api_error_fields() {
+    fn keeps_field_errors_with_an_unrecognized_location() {
         let payload = json!({
             "message": "Invalid request.",
             "fields": [
@@ -199,10 +203,41 @@ mod tests {
         });
         let error = api_error_from_response(400, ApiErrorPayload::Json(payload.clone()));
 
+        // A location this version does not know must not cost the caller the
+        // whole field error — they are already on an error path.
+        let fields = error.fields.unwrap();
+        assert_eq!(fields.len(), 2);
+        assert_eq!(fields[0].location, ApiErrorLocation::Body);
+        assert_eq!(
+            fields[1].location,
+            ApiErrorLocation::Unknown("unexpected".to_string())
+        );
+        assert_eq!(fields[1].field, "currency");
+        assert_eq!(error.payload, ApiErrorPayload::Json(payload));
+    }
+
+    #[test]
+    fn ignores_structurally_invalid_api_error_fields() {
+        let payload = json!({
+            "message": "Invalid request.",
+            "fields": [
+                {
+                    "location": "body",
+                    "field": "amount",
+                    "code": "required",
+                    "message": "Required."
+                },
+                { "location": "body", "field": "currency", "message": "No code." },
+                { "location": "body", "field": 42, "code": "c", "message": "m" }
+            ]
+        });
+        let error = api_error_from_response(400, ApiErrorPayload::Json(payload));
+
+        // Missing or wrong-typed keys are a different thing from an unknown
+        // enum value: there is no field error to hand back, so it is dropped.
         let fields = error.fields.unwrap();
         assert_eq!(fields.len(), 1);
         assert_eq!(fields[0].field, "amount");
-        assert_eq!(error.payload, ApiErrorPayload::Json(payload));
     }
 
     #[test]

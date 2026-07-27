@@ -27,7 +27,7 @@
 
 ```toml
 [dependencies]
-invoq = "0.2.0"
+invoq = "0.3.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -40,6 +40,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 1. 登录 [invoq 商户后台](https://app.invoq.money)，创建一个项目。
 2. 在 **API keys** 页面创建一把密钥（secret key）。测试密钥以 `sk_test_` 开头，正式密钥以 `sk_live_` 开头；密钥的模式决定开出的账单是测试单还是正式单。
 3. 在项目的 **webhooks** 设置里保存你的 webhook URL。对应模式的 webhook 签名密钥（`whsec_...`）只在首次启用 webhook 时展示一次，记得马上存好。webhook URL 必须是公网可访问的 HTTPS 地址。
+4. 上线前先设置 **Receiving wallet**。测试账单不需要它；没有结算去向的正式账单会以 `409 no_payment_options_available` 失败。
 
 把密钥加进服务端环境变量：
 
@@ -109,7 +110,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 创建账单：
 
 ```rust,no_run
-use invoq::{CreateInvoiceInput, Invoq, InvoiceCurrency};
+use invoq::{CreateInvoiceInput, Invoq};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -119,7 +120,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoices
         .create(
             CreateInvoiceInput::new("149")
-                .currency(InvoiceCurrency::Usd)
                 .description("SaaS boilerplate")
                 .reference_id("order_1234")
                 .return_url("https://example.com/orders/order_1234"),
@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 不需要时，可以省略 `.description(...)`、`.reference_id(...)` 或 `.return_url(...)`。未设置的可选请求字段不会出现在 JSON 里。用 `.without_return_url()` 可以发送 `return_url: null`，主动放弃项目默认的 return URL。
 
-金额要由服务端决定，不要相信客户端传来的金额。`amount` 是 `"0.01"` 到 `"1000000.00"` 之间的十进制美元字符串，最多两位小数，比如 `"129"` 或 `"129.99"`。
+金额要由服务端决定，不要相信客户端传来的金额。`amount` 是 `"0.01"` 到 `"1000000.00"` 之间的十进制美元字符串，最多两位小数，比如 `"129"` 或 `"129.99"`。币种恒为 USD，测试还是正式由密钥决定——两者都不是请求字段。
 
 用 `reference_id` 把 `invoice.paid` webhook 对应回你的订单。它还让创建操作可以放心重试：用相同的 `reference_id` 和相同的账单条款再次创建，返回的是已有账单而不是重复开单；条款不同则会报 `409 reference_id_conflict` API 错误。
 
@@ -152,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()` 返回收银台使用的公开账单结构。它包含面向收银台的字段，例如 `amount_paid`、`amount_due`、`amount_overpaid`、`payment_status`、`project`、`deposit_address`、`monitoring_ends_at`、`monitoring_status`、`transfers` 和 `direct_onchain_rails`，但不包含 `reference_id`。如果需要商户侧的参考号，请使用创建账单的响应或 `invoice.paid` webhook。
+`invoices.get()` 返回收银台使用的公开账单结构：即创建响应的结构，加上 `amount_paid`、`project` 和 `transfers`，去掉 `reference_id`。如果需要商户侧的参考号，请使用创建账单的响应或 `invoice.paid` webhook。
 
 创建模拟付款：
 
@@ -181,7 +181,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 SDK 直接返回响应里的 `data` 对象。
 
-响应里的金额都经过规范化：用 `"129"` 创建，账单返回 `amount: "129.0000"`。比较金额请按数值比，不要按字符串比。`amount_due` 按 `max(amount - amount_paid, 0)` 派生，使用和 `amount_paid` 相同的 18 位小数 scale；`amount_overpaid` 与它互为镜像，即 `max(amount_paid - amount, 0)`，所以你不必自己做减法。`monitoring_status` 取值 `active` 或 `ended`——一旦变为 `ended`，收款地址就不再被监控——而 `transfers` 是已确认的链上收款记录（每一项都含 `tx_hash`、`amount` 和 `explorer_tx_url`）。测试账单里两者分别为 `null` / `[]`。
+账单有两个状态字段。`status` 是记账状态——`unpaid`、`partially_paid`、`paid`、`settling`、`settled`、`review_required`，其中三个等同于已付款的取值只差在资金离你的钱包还有多远。`checkout_status` 是付款人看到的状态——`open`、`confirming`、`expired`、`paid`、`unavailable`——它从不构成履约依据。`payment_revision` 每当已确认的付款集合变化就加一，你可以据此丢掉比手上更旧的快照。
+
+响应里的金额都经过规范化：用 `"129"` 创建，账单返回 `amount: "129.0000"`。比较金额请按数值比，不要按字符串比。`amount_due` 按 `max(amount - amount_paid, 0)` 派生，使用和 `amount_paid` 相同的 18 位小数 scale；`amount_overpaid` 与它互为镜像，即 `max(amount_paid - amount, 0)`，所以你不必自己做减法。
+
+`payment_options` 装的是付款指令，创建时即固定，测试模式下为空。每一项先按 `status` 分辨，再按收款方式分辨：只有 `PaymentOptionStatus::Ready` 可付，`PaymentInstructions::EvmDeposit` 带 `deposit_address` 和 `suggested_amount`，`PaymentInstructions::DirectExact` 带 `recipient_address` 以及买家必须一位不差转出的 `exact_amount`。识别一项付款方式请用 `chain_namespace`、`chain_reference` 和 `token_address`，不要用它在数组里的位置。`transfers` 是已确认的收款记录——`transaction_id`、`event_index`、`amount`、`explorer_transaction_url`——在有付款确认前一直为空。完整字段说明见 [REST API 文档](https://github.com/invoqmoney/api)。
+
+每个 wire 枚举都带一个 `Unknown` 分支。后端可以加一个新值——一条新链、一个新状态——而不把它当成破坏性变更，没有这个分支的话整个响应会反序列化失败。你的 `match` 仍然必须处理它，而未知的选项状态永远不可付。
 
 ## 托管收银页
 
@@ -232,7 +238,9 @@ webhook 验签失败会返回 `InvoqSignatureVerificationError`。
 
 用 `invoice.paid` webhook 在你的服务端履约订单。`invoice_paid_event(&event)` 返回可履约的已付款事件的类型化数据；如果你只需要一个布尔值，`is_invoice_paid(&event)` 对同样的事件返回 true。用账单的 `reference_id` 找到并履约对应的订单。这两个辅助函数接受可视为已付款的账单状态（`paid`、`settling` 或 `settled`），并拒绝 `review_required`。`review_required` 账单暂时还不会发出 `invoice.paid` webhook。
 
-投递失败会重试，所以请按 `reference_id` 或账单 `id` 幂等履约，让重复投递变成空操作。尽快返回 2xx；其他任何状态码都算投递失败。
+账单从已付款跌回不足额时，invoq 还会发 `invoice.payment_reversed`——比如链重组把一笔已确认的转账拿掉了。用 `is_invoice_payment_reversed(&event)` 接住它，或用 `invoice_payment_reversed_event(&event)` 解析它，再按你自己的策略暂停或撤销履约。和已付款的辅助函数不同，它不做任何状态判断：丢掉一次反转，会让订单停留在履约状态，而对应的付款已经不存在了。本版 SDK 尚未建模的事件类型同样能验签通过，并原样返回。
+
+投递失败会重试——最多 5 次，间隔依次为 1 分钟、5 分钟、30 分钟、2 小时——所以请按 `reference_id` 或账单 `id` 幂等履约，让重复投递变成空操作。送达顺序也不保证：请保留 `payment_revision` 最大的那份快照。尽快返回 2xx；其他任何状态码都算投递失败并会重试，重定向和 `4xx` 也在其中。
 
 SDK 允许 5 分钟的时间戳容差。投递失败后每次重试都会重新签名，所以正常的重试投递仍然能在这个时间窗内验签通过。签名头格式是：
 

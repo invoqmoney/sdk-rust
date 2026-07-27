@@ -27,7 +27,7 @@ Quel que soit le backend, le côté navigateur reste le même : **`@invoq/chec
 
 ```toml
 [dependencies]
-invoq = "0.2.0"
+invoq = "0.3.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
@@ -40,6 +40,7 @@ Nécessite Rust 1.86 ou une version plus récente.
 1. Connectez-vous au [tableau de bord invoq](https://app.invoq.money) et créez un projet.
 2. Sur la page API keys, créez une clé secrète. Les clés de test commencent par `sk_test_`, les clés de production par `sk_live_`. Le mode de la clé détermine si les factures sont de test ou de production.
 3. Dans les réglages webhooks de votre projet, enregistrez votre URL de webhook. Le secret du webhook (`whsec_...`) pour ce mode ne s’affiche qu’une seule fois, lors de la première activation du webhook — notez-le donc tout de suite. Les URL de webhook doivent être des URL HTTPS publiques.
+4. Configurez votre Receiving wallet avant de passer en production. Les factures de test n’en ont pas besoin ; une facture de production sans destination de règlement échoue avec `409 no_payment_options_available`.
 
 Ajoutez la clé secrète à l’environnement de votre serveur :
 
@@ -109,7 +110,7 @@ Passez un `reqwest::Client` personnalisé via `InvoqOptions::http_client(...)` l
 Créez une facture :
 
 ```rust,no_run
-use invoq::{CreateInvoiceInput, Invoq, InvoiceCurrency};
+use invoq::{CreateInvoiceInput, Invoq};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -119,7 +120,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .invoices
         .create(
             CreateInvoiceInput::new("149")
-                .currency(InvoiceCurrency::Usd)
                 .description("SaaS boilerplate")
                 .reference_id("order_1234")
                 .return_url("https://example.com/orders/order_1234"),
@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 Omettez `.description(...)`, `.reference_id(...)` ou `.return_url(...)` lorsqu’ils ne sont pas définis. Les champs de requête optionnels non définis sont omis du JSON. Utilisez `.without_return_url()` pour envoyer `return_url: null` et renoncer à l’URL de retour par défaut du projet.
 
-Utilisez un montant défini côté serveur. Ne faites pas confiance aux montants fournis par le client. `amount` est une chaîne décimale en USD de `"0.01"` à `"1000000.00"`, avec au plus 2 décimales, comme `"129"` ou `"129.99"`.
+Utilisez un montant défini côté serveur. Ne faites pas confiance aux montants fournis par le client. `amount` est une chaîne décimale en USD de `"0.01"` à `"1000000.00"`, avec au plus 2 décimales, comme `"129"` ou `"129.99"`. La devise est toujours l’USD, et le mode test ou live vient de la clé : ni l’un ni l’autre n’est un champ de la requête.
 
 Utilisez `reference_id` pour relier les webhooks `invoice.paid` à votre commande. Il permet aussi de relancer la création sans risque : recréer une facture avec le même `reference_id` et les mêmes conditions renvoie la facture existante au lieu d’un doublon, tandis qu’avec des conditions différentes, l’appel échoue avec une erreur d’API `409 reference_id_conflict`.
 
@@ -152,7 +152,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-`invoices.get()` renvoie la forme de facture publique utilisée par le checkout. Elle inclut les champs côté checkout, comme `amount_paid`, `amount_due`, `amount_overpaid`, `payment_status`, `project`, `deposit_address`, `monitoring_ends_at`, `monitoring_status`, `transfers` et `direct_onchain_rails`, mais n’inclut pas `reference_id`. Utilisez la réponse de création ou le webhook `invoice.paid` quand vous avez besoin de votre référence marchand.
+`invoices.get()` renvoie la forme de facture publique utilisée par le checkout : la forme de la réponse de création, plus `amount_paid`, `project` et `transfers`, moins `reference_id`. Utilisez la réponse de création ou le webhook `invoice.paid` quand vous avez besoin de votre référence marchand.
 
 Créez un paiement de test :
 
@@ -181,7 +181,13 @@ Omettez `.reference_id(...)` lorsqu’il n’est pas défini ; n’envoyez pas
 
 Le SDK renvoie directement l’objet `data` de la réponse.
 
-Les montants des réponses sont normalisés. Créez avec `"129"` et la facture renvoie `amount: "129.0000"`. Comparez les montants numériquement, pas comme des chaînes. `amount_due` est dérivé sous la forme `max(amount - amount_paid, 0)` et utilise la même échelle à 18 décimales que `amount_paid` ; `amount_overpaid` en est le miroir, `max(amount_paid - amount, 0)`, si bien que vous n’avez jamais à soustraire d’argent vous-même. `monitoring_status` vaut `active` ou `ended` — une fois à `ended`, l’adresse de dépôt n’est plus surveillée — et `transfers` est le journal confirmé des encaissements on-chain (chaque entrée a `tx_hash`, `amount` et `explorer_tx_url`). Les deux valent `null` / `[]` pour les factures de test.
+Deux champs de statut. `status` est le statut comptable — `unpaid`, `partially_paid`, `paid`, `settling`, `settled`, `review_required` — et les trois valeurs assimilables à un paiement validé ne diffèrent que par l’avancement des fonds vers votre portefeuille. `checkout_status` est celui vu par le payeur — `open`, `confirming`, `expired`, `paid`, `unavailable` — et n’autorise jamais le traitement d’une commande. `payment_revision` augmente à chaque changement de l’ensemble des paiements confirmés, ce qui permet d’écarter un instantané plus ancien que celui que vous avez déjà.
+
+Les montants des réponses sont normalisés. Créez avec `"129"` et la facture renvoie `amount: "129.0000"`. Comparez les montants numériquement, pas comme des chaînes. `amount_due` est dérivé sous la forme `max(amount - amount_paid, 0)` et utilise la même échelle à 18 décimales que `amount_paid` ; `amount_overpaid` en est le miroir, `max(amount_paid - amount, 0)`, si bien que vous n’avez jamais à soustraire d’argent vous-même.
+
+`payment_options` contient les instructions de paiement, figées à la création et vide en mode test. Filtrez d’abord sur le `status` d’une option, puis sur sa méthode de collecte : seul `PaymentOptionStatus::Ready` est payable, `PaymentInstructions::EvmDeposit` porte `deposit_address` et `suggested_amount`, et `PaymentInstructions::DirectExact` porte `recipient_address` et un `exact_amount` que l’acheteur doit envoyer au chiffre près. Identifiez une option par `chain_namespace`, `chain_reference` et `token_address`, jamais par sa position. `transfers` est le journal confirmé des encaissements — `transaction_id`, `event_index`, `amount`, `explorer_transaction_url` — et reste vide tant qu’aucun paiement n’est confirmé. Référence complète des champs : [documentation de l’API REST](https://github.com/invoqmoney/api).
+
+Chaque enum du wire porte une branche `Unknown`. Le backend peut ajouter une valeur — une nouvelle chaîne, un nouvel état — sans la considérer comme cassante, et sans cette branche la réponse entière échouerait à se désérialiser. Votre `match` doit quand même la traiter, et un statut d’option inconnu n’est jamais payable.
 
 ## Page de paiement hébergée
 
@@ -232,7 +238,9 @@ Les échecs de vérification de webhook renvoient `InvoqSignatureVerificationErr
 
 Utilisez les webhooks `invoice.paid` pour traiter les commandes sur votre serveur. `invoice_paid_event(&event)` renvoie des données typées pour les événements payés permettant de traiter une commande ; `is_invoice_paid(&event)` renvoie true pour ces mêmes événements lorsque vous n’avez besoin que d’un booléen. Utilisez le `reference_id` de la facture pour retrouver et traiter votre commande. Les helpers acceptent les statuts de facture assimilables à un paiement validé (`paid`, `settling` ou `settled`) et rejettent `review_required`. Une facture `review_required` n’émet pas encore de webhook `invoice.paid`.
 
-Les livraisons échouées sont retentées : traitez donc les commandes de façon idempotente par `reference_id` ou par `id` de facture, et faites en sorte qu’une livraison répétée n’ait aucun effet. Répondez rapidement avec un 2xx ; tout autre statut compte comme une livraison échouée.
+invoq envoie aussi `invoice.payment_reversed` quand une facture déjà payée repasse sous son montant — par exemple lorsqu’une réorganisation de chaîne annule un transfert confirmé. Interceptez-le avec `is_invoice_payment_reversed(&event)` ou décodez-le avec `invoice_payment_reversed_event(&event)`, puis suspendez ou annulez le traitement selon votre propre politique. Ce helper n’applique aucune règle de statut, contrairement à celui des paiements : ignorer une annulation laisserait une commande traitée sur un paiement qui n’existe plus. Un type d’événement que cette version du SDK ne modélise pas est tout de même vérifié et renvoyé tel quel.
+
+Les livraisons échouées sont retentées — jusqu’à 5 tentatives, avec des délais de 1 minute, 5 minutes, 30 minutes, puis 2 heures — traitez donc les commandes de façon idempotente par `reference_id` ou par `id` de facture, et faites en sorte qu’une livraison répétée n’ait aucun effet. Elles peuvent aussi arriver dans le désordre : gardez l’instantané dont le `payment_revision` est le plus élevé. Répondez rapidement avec un 2xx ; tout autre statut compte comme une livraison échouée et est retenté, y compris les redirections et les `4xx`.
 
 Le SDK tolère un décalage d’horodatage de 5 minutes. Les livraisons échouées sont signées à nouveau à chaque tentative, si bien que les livraisons normalement retentées se vérifient toujours dans cette fenêtre. L’en-tête de signature est :
 
