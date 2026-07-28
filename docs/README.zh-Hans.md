@@ -31,10 +31,9 @@
 
 ## 安装
 
-```toml
-[dependencies]
-invoq = "0.3.0"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```sh
+cargo add invoq
+cargo add tokio --features macros,rt-multi-thread
 ```
 
 本 SDK 基于 `reqwest` 和异步 Rust。

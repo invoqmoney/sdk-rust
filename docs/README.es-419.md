@@ -32,10 +32,9 @@ El lado del navegador es el mismo para cualquier backend: **`@invoq/checkout`** 
 
 ## Instalación
 
-```toml
-[dependencies]
-invoq = "0.3.0"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```sh
+cargo add invoq
+cargo add tokio --features macros,rt-multi-thread
 ```
 
 El SDK usa `reqwest` y Rust asíncrono.

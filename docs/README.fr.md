@@ -31,10 +31,9 @@ Quel que soit le backend, le côté navigateur reste le même : **`@invoq/chec
 
 ## Installation
 
-```toml
-[dependencies]
-invoq = "0.3.0"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```sh
+cargo add invoq
+cargo add tokio --features macros,rt-multi-thread
 ```
 
 Le SDK utilise `reqwest` et du Rust asynchrone.

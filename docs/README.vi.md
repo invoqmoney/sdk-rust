@@ -32,10 +32,9 @@ Dù bạn chọn backend nào, phía trình duyệt vẫn như nhau: **`@invoq/c
 
 ## Cài đặt
 
-```toml
-[dependencies]
-invoq = "0.3.0"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```sh
+cargo add invoq
+cargo add tokio --features macros,rt-multi-thread
 ```
 
 SDK dùng `reqwest` và Rust bất đồng bộ.

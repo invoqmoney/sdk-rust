@@ -32,10 +32,9 @@ O lado do navegador é o mesmo para todo backend: **`@invoq/checkout`** (JavaScr
 
 ## Instalação
 
-```toml
-[dependencies]
-invoq = "0.3.0"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+```sh
+cargo add invoq
+cargo add tokio --features macros,rt-multi-thread
 ```
 
 O SDK usa `reqwest` e Rust assíncrono.
