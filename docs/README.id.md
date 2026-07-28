@@ -1,13 +1,19 @@
 # invoq Rust SDK
 
-[English](../README.md) · **Bahasa Indonesia** · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · [Tiếng Việt](./README.vi.md) · [Türkçe](./README.tr.md) · [ไทย](./README.th.md) · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
+[English](https://github.com/invoqmoney/sdk-rust/blob/main/README.md) · **Bahasa Indonesia** · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · [Tiếng Việt](./README.vi.md) · [Türkçe](./README.tr.md) · [ไทย](./README.th.md) · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
 
-> Dokumen ini terjemahan dari README bahasa Inggris; kalau ada perbedaan, [versi bahasa Inggris](../README.md) yang berlaku.
+> Dokumen ini terjemahan dari README bahasa Inggris; kalau ada perbedaan, [versi bahasa Inggris](https://github.com/invoqmoney/sdk-rust/blob/main/README.md) yang berlaku.
 
 SDK Rust untuk API server invoq dan verifikasi webhook.
 
 Gunakan crate ini hanya di server Anda. Crate ini menerima kunci rahasia dan tidak
 boleh ikut dikompilasi ke dalam aplikasi sisi klien.
+
+**Coding pakai AI? Tempelkan ini.**
+
+```text
+Tambahkan pembayaran stablecoin ke proyek saya dengan invoq. Mulai dari mode tes. Baca dokumentasinya sebelum menulis kode: https://invoq.money/llms.txt
+```
 
 ## SDK server
 

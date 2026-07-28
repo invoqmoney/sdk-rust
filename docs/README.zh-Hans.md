@@ -1,12 +1,18 @@
 # invoq Rust SDK
 
-[English](../README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · [Tiếng Việt](./README.vi.md) · [Türkçe](./README.tr.md) · [ไทย](./README.th.md) · **简体中文** · [繁體中文](./README.zh-Hant.md)
+[English](https://github.com/invoqmoney/sdk-rust/blob/main/README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · [Tiếng Việt](./README.vi.md) · [Türkçe](./README.tr.md) · [ไทย](./README.th.md) · **简体中文** · [繁體中文](./README.zh-Hant.md)
 
-> 本文是英文版 README 的简体中文翻译；若表述有出入，以[英文版](../README.md)为准。
+> 本文是英文版 README 的简体中文翻译；若表述有出入，以[英文版](https://github.com/invoqmoney/sdk-rust/blob/main/README.md)为准。
 
 面向 invoq 服务端 API 和 webhook 验签的 Rust SDK。
 
 本 crate 只能在你的服务端使用。它会接收密钥，绝不能被编译进客户端应用。
+
+**在用 AI 写代码？把这段贴给它。**
+
+```text
+用 invoq 给我的项目接入稳定币收款，从测试模式开始。写代码前先读文档 https://invoq.money/llms.txt
+```
 
 ## 服务端 SDK
 

@@ -32,6 +32,14 @@ impl Invoq {
             ));
         }
 
+        // The transport refuses this as a connection error, which sends the caller
+        // to debug their network. Name it here, the same way every SDK does.
+        if api_key.chars().any(char::is_control) {
+            return Err(InvoqError::configuration(
+                "invoq API key must not contain control characters.",
+            ));
+        }
+
         let api_origin = normalize_api_origin(&options.api_origin)?;
         let timeout = normalize_timeout_ms(options.timeout_ms)?;
         let http_client = options.http_client.unwrap_or_else(|| {
@@ -141,7 +149,7 @@ impl Invoices {
     /// Get a public invoice by id.
     pub async fn get(&self, invoice_id: impl AsRef<str>) -> Result<PublicInvoice> {
         let invoice_id = invoice_id.as_ref();
-        require_non_empty(invoice_id, "invoiceId")?;
+        require_path_segment(invoice_id, "invoiceId")?;
 
         request_json::<PublicInvoice, ()>(
             &self.client_options,
@@ -159,7 +167,7 @@ impl Invoices {
         input: CreateTestPaymentInput,
     ) -> Result<TestPaymentInvoice> {
         let invoice_id = invoice_id.as_ref();
-        require_non_empty(invoice_id, "invoiceId")?;
+        require_path_segment(invoice_id, "invoiceId")?;
         require_non_empty(&input.amount, "amount")?;
 
         request_json(
@@ -229,6 +237,20 @@ fn normalize_timeout_ms(value: u64) -> Result<Duration> {
     }
 
     Ok(Duration::from_millis(value))
+}
+
+// A URL resolver pops "." and "..", so an id of either would call a different
+// endpoint instead of 404ing. Percent-encoding is no help: normalization is first.
+fn require_path_segment(value: &str, field_name: &str) -> Result<()> {
+    require_non_empty(value, field_name)?;
+
+    if value == "." || value == ".." {
+        return Err(InvoqError::invalid_request(format!(
+            "{field_name} must not be a path segment that resolves ('.' or '..')."
+        )));
+    }
+
+    Ok(())
 }
 
 fn require_non_empty(value: &str, field_name: &str) -> Result<()> {
@@ -382,7 +404,10 @@ mod tests {
                     exact_amount,
                     ..
                 }) => Some(exact_amount.as_str()),
-                PaymentOptionStatus::Unavailable | PaymentOptionStatus::Unknown => None,
+                // A rail this version does not model is offered but not payable.
+                PaymentOptionStatus::Ready(PaymentInstructions::Other(_))
+                | PaymentOptionStatus::Unavailable
+                | PaymentOptionStatus::Unknown => None,
             })
             .collect::<Vec<_>>();
 
@@ -433,6 +458,31 @@ mod tests {
                 "reference_id": "test_payment_001"
             })
         );
+    }
+
+    #[tokio::test]
+    async fn rejects_api_keys_with_control_characters() {
+        for key in [
+            "sk_test_x\r\nX-Injected: yes",
+            "sk_test_x\n",
+            "sk_test\u{0}x",
+        ] {
+            assert!(Invoq::new(key).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_dot_segment_invoice_ids() {
+        let client = Invoq::new("sk_test_123").unwrap();
+
+        for id in [".", ".."] {
+            assert!(client.invoices.get(id).await.is_err());
+            assert!(client
+                .invoices
+                .create_test_payment(id, CreateTestPaymentInput::new("1"))
+                .await
+                .is_err());
+        }
     }
 
     #[tokio::test]

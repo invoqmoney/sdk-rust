@@ -104,6 +104,9 @@ pub enum PaymentOptionCollectionMethod {
 
 /// Field-level validation error returned by the invoq API.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+// #[non_exhaustive] on every response shape: the backend adds fields without
+// calling it breaking. Input types keep it off — callers construct those.
+#[non_exhaustive]
 pub struct ApiErrorField {
     pub field: String,
     pub location: ApiErrorLocation,
@@ -118,7 +121,6 @@ pub enum ApiErrorLocation {
     Query,
     Path,
     Body,
-    Header,
     /// A value this SDK version does not know.
     ///
     /// The backend can add one without treating it as breaking. Without this
@@ -136,8 +138,9 @@ pub enum PaymentInstructions {
     /// credits the invoice by its amount.
     ///
     /// `suggested_amount` is guidance, not a match requirement: it is
-    /// `max(0, amount_due - pending)` rounded up to the rail's decimals, so it
-    /// can exceed `amount_due` by one token unit.
+    /// `max(0, amount_due - pending)` rounded up to at most 6 digits (a person
+    /// retypes it) and padded back to `token_decimals`, so it can exceed
+    /// `amount_due` by up to `0.000001`.
     EvmDeposit {
         deposit_address: String,
         suggested_amount: String,
@@ -155,6 +158,12 @@ pub enum PaymentInstructions {
         matching_increment: String,
         exact_amount: String,
     },
+    /// Payable fields this version does not model, kept verbatim but not payable.
+    ///
+    /// Must stay last: `untagged` takes the first matching variant, and this one
+    /// matches anything. Without it a single unknown rail fails the whole
+    /// response, taking the invoice id with it.
+    Other(serde_json::Map<String, serde_json::Value>),
 }
 
 /// Whether a payment option can be paid right now.
@@ -186,6 +195,7 @@ pub enum PaymentOptionStatus {
 /// `network_label`, `display_symbol`, `logo_url`, or `chain_logo_url`, which are
 /// display metadata.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct PaymentOption {
     pub collection_method: PaymentOptionCollectionMethod,
     pub chain_namespace: ChainNamespace,
@@ -203,6 +213,7 @@ pub struct PaymentOption {
 
 /// Payer-visible project branding returned by public invoice reads.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct PublicInvoiceProject {
     pub id: String,
     pub name: Option<String>,
@@ -219,6 +230,7 @@ pub struct PublicInvoiceProject {
 /// `explorer_transaction_url` is `None` when the chain has no configured
 /// explorer.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct PublicInvoiceTransfer {
     pub chain_namespace: ChainNamespace,
     pub chain_reference: String,
@@ -230,6 +242,7 @@ pub struct PublicInvoiceTransfer {
 
 /// Invoice returned by invoice creation.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct Invoice {
     pub id: String,
     pub mode: InvoiceMode,
@@ -256,6 +269,7 @@ pub struct Invoice {
 
 /// Invoice returned by public invoice reads.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct PublicInvoice {
     pub id: String,
     pub mode: InvoiceMode,
@@ -279,6 +293,7 @@ pub struct PublicInvoice {
 
 /// Invoice returned after simulating payment on a test invoice.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct TestPaymentInvoice {
     pub id: String,
     pub mode: InvoiceMode,
@@ -385,6 +400,7 @@ impl CreateTestPaymentInput {
 /// Payment instructions and `return_url` are absent by design: reconcile by
 /// invoice id plus `reference_id`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct InvoicePaidEventInvoice {
     pub id: String,
     pub mode: InvoiceMode,
@@ -399,12 +415,14 @@ pub struct InvoicePaidEventInvoice {
 
 /// Known invoice.paid webhook data payload.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct InvoicePaidEventData {
     pub invoice: InvoicePaidEventInvoice,
 }
 
 /// Known invoice.paid webhook event.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct InvoicePaidEvent {
     pub id: String,
     #[serde(rename = "type")]
@@ -416,10 +434,11 @@ pub struct InvoicePaidEvent {
 
 /// Known invoice.payment_reversed webhook invoice payload.
 ///
-/// `status` is deliberately untyped, unlike [`InvoicePaidEventInvoice`]: a
-/// status this SDK version does not model must still decode, because dropping a
-/// reversal leaves an order fulfilled on a payment that no longer exists.
+/// `status` is untyped and `payment_revision` signed, both looser than their
+/// [`InvoicePaidEventInvoice`] counterparts: this shape fails open, because
+/// dropping a reversal leaves an order fulfilled on a vanished payment.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct InvoicePaymentReversedEventInvoice {
     pub id: String,
     pub mode: InvoiceMode,
@@ -428,12 +447,13 @@ pub struct InvoicePaymentReversedEventInvoice {
     pub currency: InvoiceCurrency,
     pub amount_paid: String,
     pub reference_id: Option<String>,
-    pub payment_revision: u64,
+    pub payment_revision: i64,
     pub fully_paid_at: Option<String>,
 }
 
 /// Known invoice.payment_reversed webhook data payload.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct InvoicePaymentReversedEventData {
     pub invoice: InvoicePaymentReversedEventInvoice,
 }
@@ -444,6 +464,7 @@ pub struct InvoicePaymentReversedEventData {
 /// transfer, say. It carries a higher `payment_revision` and
 /// `fully_paid_at: None`.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[non_exhaustive]
 pub struct InvoicePaymentReversedEvent {
     pub id: String,
     #[serde(rename = "type")]
@@ -918,6 +939,113 @@ mod tests {
             let status: InvoiceStatus = serde_json::from_str(raw).unwrap();
             assert_eq!(serde_json::to_string(&status).unwrap(), raw);
         }
+    }
+
+    // One unreadable option must not cost the caller the whole invoice.
+    #[test]
+    fn keeps_the_invoice_when_one_ready_option_is_a_rail_this_version_predates() {
+        let invoice: Invoice = serde_json::from_value(serde_json::json!({
+            "id": "inv_0123456789abcdefghjk",
+            "mode": "live",
+            "amount": "12.3400",
+            "currency": "USD",
+            "reference_id": null,
+            "description": null,
+            "return_url": null,
+            "status": "unpaid",
+            "checkout_status": "open",
+            "payment_revision": 0,
+            "amount_due": "12.340000000000000000",
+            "amount_overpaid": "0.000000000000000000",
+            "monitoring_ends_at": "2026-07-26T10:00:00.000Z",
+            "payment_options": [
+                {
+                    "collection_method": "evm_deposit",
+                    "chain_namespace": "eip155",
+                    "chain_reference": "8453",
+                    "currency": "USD",
+                    "token_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+                    "token_decimals": 6,
+                    "network_label": "Base",
+                    "display_symbol": "USDC",
+                    "logo_url": null,
+                    "chain_logo_url": null,
+                    "status": "ready",
+                    "deposit_address": "0x20c124f3919bb502c6126cda5bd6e5287859d5ca",
+                    "suggested_amount": "12.340000"
+                },
+                {
+                    "collection_method": "lightning_invoice",
+                    "chain_namespace": "bip122",
+                    "chain_reference": "000000000019d6689c085ae165831e93",
+                    "currency": "USD",
+                    "token_address": "sat",
+                    "token_decimals": 0,
+                    "network_label": "Lightning",
+                    "display_symbol": "BTC",
+                    "logo_url": null,
+                    "chain_logo_url": null,
+                    "status": "ready",
+                    "bolt11": "lnbc123..."
+                }
+            ]
+        }))
+        .unwrap();
+
+        assert_eq!(invoice.id, "inv_0123456789abcdefghjk");
+        assert_eq!(invoice.payment_options.len(), 2);
+
+        // The rail this version knows is still fully payable.
+        let PaymentOptionStatus::Ready(PaymentInstructions::EvmDeposit {
+            deposit_address, ..
+        }) = &invoice.payment_options[0].status
+        else {
+            panic!("expected the known option to stay payable");
+        };
+        assert_eq!(
+            deposit_address,
+            "0x20c124f3919bb502c6126cda5bd6e5287859d5ca"
+        );
+
+        // The unknown one is readable but carries no payable variant.
+        let PaymentOptionStatus::Ready(PaymentInstructions::Other(fields)) =
+            &invoice.payment_options[1].status
+        else {
+            panic!("expected the unknown rail to fall to Other");
+        };
+        assert_eq!(
+            fields.get("bolt11").and_then(|v| v.as_str()),
+            Some("lnbc123...")
+        );
+        assert_eq!(
+            invoice.payment_options[1].collection_method,
+            PaymentOptionCollectionMethod::Unknown("lightning_invoice".to_string())
+        );
+    }
+
+    // A missing payable field degrades that option, not the invoice.
+    #[test]
+    fn keeps_the_invoice_when_a_ready_option_is_missing_a_payable_field() {
+        let option: PaymentOption = serde_json::from_value(serde_json::json!({
+            "collection_method": "evm_deposit",
+            "chain_namespace": "eip155",
+            "chain_reference": "8453",
+            "currency": "USD",
+            "token_address": "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913",
+            "token_decimals": 6,
+            "network_label": "Base",
+            "display_symbol": "USDC",
+            "logo_url": null,
+            "chain_logo_url": null,
+            "status": "ready",
+            "deposit_address": "0x20c124f3919bb502c6126cda5bd6e5287859d5ca"
+        }))
+        .unwrap();
+
+        assert!(matches!(
+            option.status,
+            PaymentOptionStatus::Ready(PaymentInstructions::Other(_))
+        ));
     }
 
     // The one enum that cannot carry its raw value: it is the internally

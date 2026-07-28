@@ -26,6 +26,8 @@ where
     T: DeserializeOwned,
     B: Serialize + ?Sized,
 {
+    // Leaves `&`, `=` and `+` unescaped — RFC 3986-legal, but the JS and Ruby
+    // four SDKs escape them. Unreachable today: ids are Crockford base32.
     let mut url = client_options.api_origin.clone();
     url.path_segments_mut()
         .expect("normalized api base URL is hierarchical")
@@ -76,6 +78,14 @@ where
             payload: payload.clone(),
         })?;
 
+    // A non-object `data` is a broken envelope, not a resource that failed to
+    // parse. Keep the payload so the caller can see what arrived.
+    if !data.is_object() {
+        return Err(InvoqError::InvalidDataEnvelope {
+            payload: payload.clone(),
+        });
+    }
+
     serde_json::from_value(data.clone()).map_err(InvoqError::ParseResponse)
 }
 
@@ -125,7 +135,6 @@ fn parse_field(value: &Value) -> Option<ApiErrorField> {
         "query" => ApiErrorLocation::Query,
         "path" => ApiErrorLocation::Path,
         "body" => ApiErrorLocation::Body,
-        "header" => ApiErrorLocation::Header,
         other => ApiErrorLocation::Unknown(other.to_string()),
     };
 

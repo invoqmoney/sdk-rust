@@ -1,13 +1,19 @@
 # invoq Rust SDK
 
-[English](../README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · **Tiếng Việt** · [Türkçe](./README.tr.md) · [ไทย](./README.th.md) · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
+[English](https://github.com/invoqmoney/sdk-rust/blob/main/README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · **Tiếng Việt** · [Türkçe](./README.tr.md) · [ไทย](./README.th.md) · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
 
-> Tài liệu này được dịch từ README tiếng Anh; nếu có chỗ khác nhau, [bản tiếng Anh](../README.md) là bản chuẩn.
+> Tài liệu này được dịch từ README tiếng Anh; nếu có chỗ khác nhau, [bản tiếng Anh](https://github.com/invoqmoney/sdk-rust/blob/main/README.md) là bản chuẩn.
 
 SDK Rust cho các API máy chủ của invoq và xác minh webhook.
 
 Chỉ dùng crate này trên máy chủ của bạn. Nó nhận các khóa bí mật và không được
 biên dịch vào các ứng dụng phía client.
+
+**Đang code bằng AI? Dán câu này.**
+
+```text
+Thêm thanh toán stablecoin vào dự án của tôi bằng invoq. Bắt đầu ở chế độ thử nghiệm. Đọc tài liệu trước khi viết code: https://invoq.money/llms.txt
+```
 
 ## SDK server
 

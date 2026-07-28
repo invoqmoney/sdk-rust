@@ -1,13 +1,19 @@
 # invoq Rust SDK'sı
 
-[English](../README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · [Tiếng Việt](./README.vi.md) · **Türkçe** · [ไทย](./README.th.md) · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
+[English](https://github.com/invoqmoney/sdk-rust/blob/main/README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · [Tiếng Việt](./README.vi.md) · **Türkçe** · [ไทย](./README.th.md) · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
 
-> Bu belge İngilizce README'nin çevirisidir; bir fark olursa [İngilizce sürüm](../README.md) esas alınır.
+> Bu belge İngilizce README'nin çevirisidir; bir fark olursa [İngilizce sürüm](https://github.com/invoqmoney/sdk-rust/blob/main/README.md) esas alınır.
 
 invoq sunucu API'leri ve webhook doğrulaması için Rust SDK'sı.
 
 Bu crate'i yalnızca sunucunuzda kullanın. Gizli anahtarları kabul eder ve istemci
 tarafı uygulamaların içine derlenmemelidir.
+
+**AI ile mi kod yazıyorsunuz? Bunu yapıştırın.**
+
+```text
+invoq ile projeme stablecoin ödemesi ekle. Test modunda başla. Kod yazmadan önce belgeleri oku: https://invoq.money/llms.txt
+```
 
 ## Sunucu SDK'ları
 

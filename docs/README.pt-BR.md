@@ -1,13 +1,19 @@
 # SDK Rust da invoq
 
-[English](../README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · **Português** · [Tiếng Việt](./README.vi.md) · [Türkçe](./README.tr.md) · [ไทย](./README.th.md) · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
+[English](https://github.com/invoqmoney/sdk-rust/blob/main/README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · **Português** · [Tiếng Việt](./README.vi.md) · [Türkçe](./README.tr.md) · [ไทย](./README.th.md) · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
 
-> Este documento é uma tradução do README em inglês; se algo divergir, vale a [versão em inglês](../README.md).
+> Este documento é uma tradução do README em inglês; se algo divergir, vale a [versão em inglês](https://github.com/invoqmoney/sdk-rust/blob/main/README.md).
 
 SDK Rust para as APIs de servidor da invoq e a verificação de webhooks.
 
 Use este crate apenas no seu servidor. Ele aceita chaves secretas e não deve ser
 compilado em aplicações do lado do cliente.
+
+**Programa com IA? Cole isto.**
+
+```text
+Adicione pagamentos em stablecoin ao meu projeto com invoq. Comece no modo de teste. Leia a documentação antes de escrever código: https://invoq.money/llms.txt
+```
 
 ## SDKs de servidor
 

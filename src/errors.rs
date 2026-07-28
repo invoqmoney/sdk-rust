@@ -7,6 +7,7 @@ pub type Result<T> = std::result::Result<T, InvoqError>;
 
 /// Top-level SDK error.
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum InvoqError {
     #[error("{0}")]
     Configuration(String),
@@ -26,6 +27,8 @@ pub enum InvoqError {
     ParseResponse(#[source] serde_json::Error),
     #[error("invoq API response did not include a data envelope.")]
     MissingDataEnvelope { payload: Value },
+    #[error("invoq API response data envelope was not an object.")]
+    InvalidDataEnvelope { payload: Value },
 }
 
 impl InvoqError {

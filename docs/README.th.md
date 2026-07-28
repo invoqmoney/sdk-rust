@@ -1,12 +1,18 @@
 # invoq Rust SDK
 
-[English](../README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · [Tiếng Việt](./README.vi.md) · [Türkçe](./README.tr.md) · **ไทย** · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
+[English](https://github.com/invoqmoney/sdk-rust/blob/main/README.md) · [Bahasa Indonesia](./README.id.md) · [Español](./README.es-419.md) · [Français](./README.fr.md) · [Português](./README.pt-BR.md) · [Tiếng Việt](./README.vi.md) · [Türkçe](./README.tr.md) · **ไทย** · [简体中文](./README.zh-Hans.md) · [繁體中文](./README.zh-Hant.md)
 
-> เอกสารนี้แปลจาก README ภาษาอังกฤษ หากมีข้อความไม่ตรงกัน ให้ยึด[ฉบับภาษาอังกฤษ](../README.md)เป็นหลัก
+> เอกสารนี้แปลจาก README ภาษาอังกฤษ หากมีข้อความไม่ตรงกัน ให้ยึด[ฉบับภาษาอังกฤษ](https://github.com/invoqmoney/sdk-rust/blob/main/README.md)เป็นหลัก
 
 Rust SDK สำหรับ server API ของ invoq และการตรวจสอบ webhook
 
 ใช้ crate นี้บนเซิร์ฟเวอร์ของคุณเท่านั้น เพราะรับคีย์ลับ (secret key) จึงต้องไม่ถูกคอมไพล์เข้าไปในแอปพลิเคชันฝั่งไคลเอนต์
+
+**ใช้ AI เขียนโค้ดอยู่ไหม วางข้อความนี้**
+
+```text
+เพิ่มการรับชำระด้วย stablecoin เข้าโปรเจกต์ของฉันด้วย invoq เริ่มที่โหมดทดสอบ อ่านเอกสารก่อนเขียนโค้ด: https://invoq.money/llms.txt
+```
 
 ## SDK ฝั่งเซิร์ฟเวอร์
 

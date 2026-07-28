@@ -1,11 +1,17 @@
 # invoq Rust SDK
 
-**English** · [Bahasa Indonesia](./docs/README.id.md) · [Español](./docs/README.es-419.md) · [Français](./docs/README.fr.md) · [Português](./docs/README.pt-BR.md) · [Tiếng Việt](./docs/README.vi.md) · [Türkçe](./docs/README.tr.md) · [ไทย](./docs/README.th.md) · [简体中文](./docs/README.zh-Hans.md) · [繁體中文](./docs/README.zh-Hant.md)
+**English** · [Bahasa Indonesia](https://github.com/invoqmoney/sdk-rust/blob/main/docs/README.id.md) · [Español](https://github.com/invoqmoney/sdk-rust/blob/main/docs/README.es-419.md) · [Français](https://github.com/invoqmoney/sdk-rust/blob/main/docs/README.fr.md) · [Português](https://github.com/invoqmoney/sdk-rust/blob/main/docs/README.pt-BR.md) · [Tiếng Việt](https://github.com/invoqmoney/sdk-rust/blob/main/docs/README.vi.md) · [Türkçe](https://github.com/invoqmoney/sdk-rust/blob/main/docs/README.tr.md) · [ไทย](https://github.com/invoqmoney/sdk-rust/blob/main/docs/README.th.md) · [简体中文](https://github.com/invoqmoney/sdk-rust/blob/main/docs/README.zh-Hans.md) · [繁體中文](https://github.com/invoqmoney/sdk-rust/blob/main/docs/README.zh-Hant.md)
 
 Rust SDK for invoq server APIs and webhook verification.
 
 Use this crate only on your server. It accepts secret keys and must not be
 compiled into client-side applications.
+
+**Coding with AI? Paste this.**
+
+```text
+Add stablecoin payments to my project with invoq. Start in test mode. Read the docs before you write any code: https://invoq.money/llms.txt
+```
 
 ## Server SDKs
 
