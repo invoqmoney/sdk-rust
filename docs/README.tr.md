@@ -43,7 +43,7 @@ Rust 1.86 veya üstünü gerektirir.
 
 ## Anahtarlarınızı alın
 
-1. [invoq paneline](https://app.invoq.money) giriş yapın ve bir proje
+1. invoq paneline giriş yapın ve bir proje
    oluşturun.
 2. **API keys** sayfasında bir gizli anahtar oluşturun. Test anahtarları `sk_test_`,
    canlı anahtarlar `sk_live_` ile başlar. Anahtarın modu, faturaların test mi

@@ -43,7 +43,7 @@ Requer Rust 1.86 ou mais novo.
 
 ## Pegue suas chaves
 
-1. Entre no [painel da invoq](https://app.invoq.money) e crie um
+1. Entre no painel da invoq e crie um
    projeto.
 2. Na página **API keys**, crie uma chave secreta. Chaves de teste começam com `sk_test_`,
    chaves de produção com `sk_live_`. O modo da chave define se as faturas são de teste

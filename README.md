@@ -41,7 +41,7 @@ Requires Rust 1.86 or newer.
 
 ## Get your keys
 
-1. Sign in to the [invoq dashboard](https://app.invoq.money) and create a
+1. Sign in to the invoq dashboard and create a
    project.
 2. On the API keys page, create a secret key. Test keys start with `sk_test_`,
    live keys with `sk_live_`. The key mode determines whether invoices are test

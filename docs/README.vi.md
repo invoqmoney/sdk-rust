@@ -43,7 +43,7 @@ Yêu cầu Rust 1.86 trở lên.
 
 ## Lấy khóa API
 
-1. Đăng nhập [bảng điều khiển invoq](https://app.invoq.money) và tạo một
+1. Đăng nhập bảng điều khiển invoq và tạo một
    dự án.
 2. Ở trang **API keys**, tạo một khóa bí mật. Khóa thử nghiệm bắt đầu bằng `sk_test_`,
    khóa thật bằng `sk_live_`. Loại khóa quyết định hóa đơn là thử nghiệm hay

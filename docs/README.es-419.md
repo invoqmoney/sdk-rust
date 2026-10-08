@@ -43,7 +43,7 @@ Requiere Rust 1.86 o más nuevo.
 
 ## Consigue tus claves
 
-1. Inicia sesión en el [panel de invoq](https://app.invoq.money) y crea un
+1. Inicia sesión en el panel de invoq y crea un
    proyecto.
 2. En la página **API keys**, crea una clave secreta. Las claves de prueba
    empiezan con `sk_test_`, las claves de producción con `sk_live_`. El modo de
